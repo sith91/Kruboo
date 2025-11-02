@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant - Settings</title>
+    <link rel="stylesheet" href="main.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">🤖</div>
+                    <span class="logo-text">AI Assistant</span>
+                </div>
+            </div>
+            
+            <ul class="sidebar-nav">
+                <li class="nav-item active" data-tab="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Dashboard</span>
+                </li>
+                <li class="nav-item" data-tab="voice">
+                    <span class="nav-icon">🎤</span>
+                    <span class="nav-text">Voice Settings</span>
+                </li>
+                <li class="nav-item" data-tab="ai">
+                    <span class="nav-icon">🧠</span>
+                    <span class="nav-text">AI Models</span>
+                </li>
+                <li class="nav-item" data-tab="privacy">
+                    <span class="nav-icon">🔒</span>
+                    <span class="nav-text">Privacy & Security</span>
+                </li>
+                <li class="nav-item" data-tab="plugins">
+                    <span class="nav-icon">🔌</span>
+                    <span class="nav-text">Plugins</span>
+                </li>
+                <li class="nav-item" data-tab="system">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">System</span>
+                </li>
+            </ul>
+            
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <div class="status-dot online"></div>
+                    <span>Assistant Ready</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1 id="contentTitle">Dashboard</h1>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="quickActionBtn">
+                        <span>Quick Action</span>
+                    </button>
+                    <button class="btn btn-primary" id="voiceTrainingBtn">
+                        <span>🎤 Voice Training</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-area">
+                <!-- Dashboard Tab -->
+                <div id="dashboard" class="tab-content active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">🎯</div>
+                            <div class="stat-info">
+                                <h3>Commands Today</h3>
+                                <span class="stat-value">24</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">⏱️</div>
+                            <div class="stat-info">
+                                <h3>Response Time</h3>
+                                <span class="stat-value">128ms</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📈</div>
+                            <div class="stat-info">
+                                <h3>Accuracy</h3>
+                                <span class="stat-value">94%</span>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🔊</div>
+                            <div class="stat-info">
+                                <h3>Voice Recognition</h3>
+                                <span class="stat-value">89%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="recent-activity">
+                        <h2>Recent Activity</h2>
+                        <div class="activity-list" id="activityList">
+                            <!-- Activity items will be populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Voice Settings Tab -->
+                <div id="voice" class="tab-content">
+                    <div class="settings-section">
+                        <h3>Speech Recognition</h3>
+                        <div class="setting-group">
+                            <label for="wakeWord">Wake Word</label>
+                            <select id="wakeWord" class="setting-input">
+                                <option value="assistant">Assistant</option>
+                                <option value="hey assistant">Hey Assistant</option>
+                                <option value="computer">Computer</option>
+                                <option value="custom">Custom...</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-group">
+                            <label for="language">Language</label>
+                            <select id="language" class="setting-input">
+                                <option value="en">English</option>
+                                <option value="si">Sinhala</option>
+                                <option value="ta">Tamil</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-group">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="continuousListening">
+                                <span class="toggle-slider"></span>
+                                Continuous Listening
+                            </label>
+                        </div>
+
+                        <div class="setting-group">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="noiseCancellation" checked>
+                                <span class="toggle-slider"></span>
+                                Noise Cancellation
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>Text-to-Speech</h3>
+                        <div class="setting-group">
+                            <label for="voiceSelection">Voice</label>
+                            <select id="voiceSelection" class="setting-input">
+                                <option value="male1">Male Voice 1</option>
+                                <option value="female1">Female Voice 1</option>
+                                <option value="neutral1">Neutral Voice 1</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="speechRate">Speech Rate</label>
+                            <input type="range" id="speechRate" min="0.5" max="2" step="0.1" value="1" class="slider">
+                            <span class="slider-value" id="speechRateValue">1.0x</span>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="speechPitch">Speech Pitch</label>
+                            <input type="range" id="speechPitch" min="0.5" max="1.5" step="0.1" value="1" class="slider">
+                            <span class="slider-value" id="speechPitchValue">1.0</span>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h3>Voice Training</h3>
+                        <div class="voice-training-container">
+                            <p>Improve voice recognition accuracy by training the assistant to recognize your voice.</p>
+                            <button class="btn btn-primary" id="startTrainingBtn">
+                                Start Voice Training
+                            </button>
+                            <div class="training-progress hidden" id="trainingProgress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <span class="progress-text" id="progressText">Training in progress...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Models Tab -->
+                <div id="ai" class="tab-content">
+                    <div class="settings-section">
+                        <h3>AI Model Configuration</h3>
+                        
+                        <div class="model-selection">
+                            <div class="model-card active" data-model="deepseek">
+                                <div class="model-header">
+                                    <h4>DeepSeek AI</h4>
+                                    <span class="model-badge">Recommended</span>
+                                </div>
+                                <p>Advanced reasoning and coding capabilities</p>
+                                <div class="model-stats">
+                                    <span>Accuracy: 95%</span>
+                                    <span>Speed: Fast</span>
+                                </div>
+                            </div>
+                            
+                            <div class="model-card" data-model="openai">
+                                <div class="model-header">
+                                    <h4>OpenAI GPT</h4>
+                                </div>
+                                <p>Creative writing and analysis</p>
+                                <div class="model-stats">
+                                    <span>Accuracy: 92%</span>
+                                    <span>Speed: Medium</span>
+                                </div>
+                            </div>
+                            
+                            <div class="model-card" data-model="local">
+                                <div class="model-header">
+                                    <h4>Local Model</h4>
+                                </div>
+                                <p>Privacy-focused offline processing</p>
+                                <div class="model-stats">
+                                    <span>Accuracy: 85%</span>
+                                    <span>Speed: Slow</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-group">
+                            <label for="apiKey">API Key</label>
+                            <input type="password" id="apiKey" class="setting-input" placeholder="Enter your API key">
+                        </div>
+
+                        <div class="setting-group">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="autoModelSelection" checked>
+                                <span class="toggle-slider"></span>
+                                Automatic Model Selection
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add other tab contents similarly -->
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="main.ts"></script>
+</body>
+</html>
