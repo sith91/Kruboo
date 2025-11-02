@@ -6,6 +6,7 @@ class DesktopApp {
   private mainWindow: BrowserWindow | null = null;
   private floatingWindow: BrowserWindow | null = null;
   private coreEngine: CoreEngine;
+  private voiceEngine: any;
 
   constructor() {
     this.coreEngine = new CoreEngine();
@@ -188,6 +189,96 @@ class DesktopApp {
       memory: process.memoryUsage(),
       uptime: process.uptime()
     };
+
+    private async setupVoiceEngine(): Promise<void> {
+    try {
+        // Initialize voice engine
+        this.voiceEngine = {
+            isListening: false,
+            start: async () => {
+                this.voiceEngine.isListening = true;
+                this.floatingWindow?.webContents.send('voice:activity', {
+                    isListening: true,
+                    transcript: 'Listening...'
+                });
+            },
+            stop: async () => {
+                this.voiceEngine.isListening = false;
+                this.floatingWindow?.webContents.send('voice:activity', {
+                    isListening: false
+                });
+            }
+        };
+
+        // Voice control IPC handlers
+        ipcMain.handle('voice:start-listening', async () => {
+            await this.voiceEngine.start();
+            return { success: true };
+        });
+
+        ipcMain.handle('voice:stop-listening', async () => {
+            await this.voiceEngine.stop();
+            return { success: true };
+        });
+
+        // Voice recognition results
+        ipcMain.on('voice:recognition-result', (event, result) => {
+            this.handleVoiceRecognitionResult(result);
+        });
+
+    } catch (error) {
+        this.logger.error('Voice engine setup failed:', error);
+    }
+}
+
+private async handleVoiceRecognitionResult(result: any): Promise<void> {
+    this.logger.info(`Voice recognition: ${result.text} (confidence: ${result.confidence})`);
+    
+    // Send to floating window for display
+    this.floatingWindow?.webContents.send('voice:activity', {
+        transcript: result.text,
+        isFinal: result.isFinal
+    });
+
+    // Process command if it's a final result
+    if (result.isFinal && result.confidence > 0.7) {
+        await this.processVoiceCommand(result.text);
+    }
+}
+
+private async processVoiceCommand(command: string): Promise<void> {
+    try {
+        this.logger.info(`Processing voice command: ${command}`);
+        
+        // Send to AI engine for processing
+        const response = await this.coreEngine.getAIEngine().processRequest({
+            prompt: command,
+            context: { source: 'voice' }
+        });
+
+        // Send response back to UI
+        this.mainWindow?.webContents.send('ai:response', {
+            success: true,
+            command,
+            response: response.text
+        });
+
+        this.floatingWindow?.webContents.send('ai:response', {
+            success: true,
+            command,
+            response: response.text
+        });
+
+    } catch (error) {
+        this.logger.error('Voice command processing failed:', error);
+        
+        this.mainWindow?.webContents.send('ai:response', {
+            success: false,
+            error: error.message
+        });
+    }
+}
+    
   }
 }
 
