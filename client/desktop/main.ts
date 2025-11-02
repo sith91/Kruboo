@@ -214,6 +214,24 @@ ipcMain.on('voice-training:data', (event, trainingData) => {
     // This would integrate with the actual voice engine
 });
 
+    // Add plugin IPC handlers
+ipcMain.handle('plugins:install', async (event, pluginId) => {
+    // Handle plugin installation
+    console.log('Installing plugin:', pluginId);
+    return { success: true };
+});
+
+ipcMain.handle('plugins:uninstall', async (event, pluginId) => {
+    // Handle plugin uninstallation
+    console.log('Uninstalling plugin:', pluginId);
+    return { success: true };
+});
+
+ipcMain.handle('plugins:list', async () => {
+    // Return list of available plugins
+    return []; // This would fetch from plugin registry
+});
+
 
   }
 
