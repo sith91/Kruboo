@@ -8,6 +8,7 @@ class DesktopApp {
   private coreEngine: CoreEngine;
   private voiceEngine: any;
   private trayManager: TrayManager;
+  private autoStartManager: AutoStartManager;
 
   constructor() {
     this.coreEngine = new CoreEngine();
@@ -20,19 +21,30 @@ class DesktopApp {
       this.createFloatingWindow();
       this.setupIPC();
       this.setupGlobalShortcuts();
+      this.autoStartManager = new AutoStartManager();
+
+  // Initialize tray manager
+      this.trayManager = new TrayManager(this.mainWindow, this.floatingWindow);
+      this.trayManager.initialize();
       
       this.coreEngine.initialize().then(() => {
         console.log('Core engine initialized');
       });
+
+      const isFirstRun = !localStorage.getItem('hasRunBefore');
+      if (isFirstRun) {
+          setTimeout(() => {
+              this.autoStartManager.showAutoStartPrompt();
+              localStorage.setItem('hasRunBefore', 'true');
+          }, 5000);
+      }
+      this.handleFirstRunAutoStart();
     });
 
     app.on('window-all-closed', () => {
       if (process.platform !== 'darwin') {
         app.quit();
       }
-
-      this.trayManager = new TrayManager(this.mainWindow, this.floatingWindow);
-      await this.trayManager.initialize();
       
     });
 
@@ -235,6 +247,20 @@ ipcMain.handle('tray:update-icon', (event, iconType) => {
         ipcMain.on('voice:recognition-result', (event, result) => {
             this.handleVoiceRecognitionResult(result);
         });
+
+
+      // Add auto-start IPC handlers
+      ipcMain.handle('auto-start:enable', async () => {
+          return await this.autoStartManager.enableAutoStart();
+      });
+
+      ipcMain.handle('auto-start:disable', async () => {
+          return await this.autoStartManager.disableAutoStart();
+      });
+
+      ipcMain.handle('auto-start:status', async () => {
+            return await this.autoStartManager.isAutoStartEnabled();
+      });
 
     } catch (error) {
         this.logger.error('Voice engine setup failed:', error);
