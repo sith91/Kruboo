@@ -1,0 +1,40 @@
+{
+  "name": "ai-assistant-desktop",
+  "version": "1.0.0",
+  "description": "Desktop AI Assistant Application",
+  "main": "dist/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
+    "dev:main": "tsc -w --project tsconfig.main.json",
+    "dev:renderer": "vite",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "tsc --project tsconfig.main.json",
+    "start": "electron dist/main.js",
+    "pack": "electron-builder"
+  },
+  "dependencies": {
+    "@ai-assistant/core": "^1.0.0",
+    "electron-store": "^8.1.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "electron": "^25.0.0",
+    "vite": "^5.0.0",
+    "typescript": "^5.0.0",
+    "concurrently": "^8.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.aiassistant.desktop",
+    "productName": "AI Assistant",
+    "directories": {
+      "output": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ]
+  }
+}
