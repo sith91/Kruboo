@@ -1,6 +1,7 @@
 import { Logger } from '../utils/logger.js';
 import { ConfigManager } from '../utils/config.js';
 import { ModelSelector } from './model-selector.js';
+import { ModelManager } from './model-manager.js';
 
 export interface AIRequest {
   prompt: string;
@@ -75,4 +76,42 @@ export class AIEngineController {
     
     return entities;
   }
+}
+
+export class AIEngineController {
+    private modelManager: ModelManager;
+
+    constructor() {
+        this.logger = new Logger('AIEngine');
+        this.config = ConfigManager.getInstance();
+        this.modelManager = new ModelManager();
+    }
+
+    async processRequest(request: AIRequest): Promise<AIResponse> {
+        this.logger.info(`Processing request: ${request.prompt.substring(0, 50)}...`);
+
+        try {
+            const modelResponse = await this.modelManager.processRequest(request.prompt, request.context);
+            
+            return {
+                text: modelResponse.text,
+                modelUsed: modelResponse.model,
+                tokensUsed: modelResponse.tokens,
+                confidence: modelResponse.confidence
+            };
+        } catch (error) {
+            this.logger.error(`AI processing failed: ${error}`);
+            throw new Error(`AI processing failed: ${error}`);
+        }
+    }
+
+    // Add method to get model statistics
+    async getModelStats(): Promise<any> {
+        return await this.modelManager.getModelStatistics();
+    }
+
+    // Add method to test all models
+    async testModels(prompt: string): Promise<any[]> {
+        return await this.modelManager.testAllModels(prompt);
+    }
 }
