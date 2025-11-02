@@ -163,6 +163,58 @@ ipcMain.handle('tray:update-icon', (event, iconType) => {
         this.floatingWindow.setPosition(x, y);
       }
     });
+
+    // Voice control IPC handlers
+        ipcMain.handle('voice:start-listening', async () => {
+            await this.voiceEngine.start();
+            return { success: true };
+        });
+
+        ipcMain.handle('voice:stop-listening', async () => {
+            await this.voiceEngine.stop();
+            return { success: true };
+        });
+
+        // Voice recognition results
+        ipcMain.on('voice:recognition-result', (event, result) => {
+            this.handleVoiceRecognitionResult(result);
+        });
+
+
+      // Add auto-start IPC handlers
+      ipcMain.handle('auto-start:enable', async () => {
+          return await this.autoStartManager.enableAutoStart();
+      });
+
+      ipcMain.handle('auto-start:disable', async () => {
+          return await this.autoStartManager.disableAutoStart();
+      });
+
+      ipcMain.handle('auto-start:status', async () => {
+            return await this.autoStartManager.isAutoStartEnabled();
+      });
+
+
+    // Add voice training IPC handlers
+ipcMain.handle('voice-training:start', async () => {
+    // This would be handled in the renderer process
+    return { success: true };
+});
+
+ipcMain.handle('voice-training:stop', async () => {
+    // This would be handled in the renderer process
+    return { success: true };
+});
+
+ipcMain.on('voice-training:data', (event, trainingData) => {
+    // Process and store voice training data
+    console.log('Voice training data received:', trainingData);
+    
+    // Update voice recognition model with new data
+    // This would integrate with the actual voice engine
+});
+
+
   }
 
   private setupGlobalShortcuts(): void {
@@ -231,36 +283,6 @@ ipcMain.handle('tray:update-icon', (event, iconType) => {
                 });
             }
         };
-
-        // Voice control IPC handlers
-        ipcMain.handle('voice:start-listening', async () => {
-            await this.voiceEngine.start();
-            return { success: true };
-        });
-
-        ipcMain.handle('voice:stop-listening', async () => {
-            await this.voiceEngine.stop();
-            return { success: true };
-        });
-
-        // Voice recognition results
-        ipcMain.on('voice:recognition-result', (event, result) => {
-            this.handleVoiceRecognitionResult(result);
-        });
-
-
-      // Add auto-start IPC handlers
-      ipcMain.handle('auto-start:enable', async () => {
-          return await this.autoStartManager.enableAutoStart();
-      });
-
-      ipcMain.handle('auto-start:disable', async () => {
-          return await this.autoStartManager.disableAutoStart();
-      });
-
-      ipcMain.handle('auto-start:status', async () => {
-            return await this.autoStartManager.isAutoStartEnabled();
-      });
 
     } catch (error) {
         this.logger.error('Voice engine setup failed:', error);
