@@ -7,6 +7,7 @@ class DesktopApp {
   private floatingWindow: BrowserWindow | null = null;
   private coreEngine: CoreEngine;
   private voiceEngine: any;
+  private trayManager: TrayManager;
 
   constructor() {
     this.coreEngine = new CoreEngine();
@@ -29,6 +30,10 @@ class DesktopApp {
       if (process.platform !== 'darwin') {
         app.quit();
       }
+
+      this.trayManager = new TrayManager(this.mainWindow, this.floatingWindow);
+      await this.trayManager.initialize();
+      
     });
 
     app.on('activate', () => {
@@ -135,6 +140,11 @@ class DesktopApp {
         }
       }
     });
+
+    //Tray IPC handlers
+ipcMain.handle('tray:update-icon', (event, iconType) => {
+    this.trayManager.updateTrayIcon(iconType);
+});
 
     ipcMain.handle('window:set-floating-position', async (event, x, y) => {
       if (this.floatingWindow) {
