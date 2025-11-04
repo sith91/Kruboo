@@ -1,10 +1,17 @@
 {
+  "name": "ai-assistant-platform",
+  "version": "1.0.0",
   "scripts": {
-    "build:installers": "node build-scripts/build-all.js",
+    "build": "node build.js all",
+    "build:win": "node build.js win",
+    "build:mac": "node build.js mac", 
+    "build:linux": "node build.js linux",
+    "build:dev": "node build.js dev",
     "deploy": "./deploy.sh",
-    "release": "npm run build:installers && git tag v1.0.0 && git push --tags",
-    "package:win": "cd client/desktop && npx electron-builder --win",
-    "package:mac": "cd client/desktop && npx electron-builder --mac",
-    "package:linux": "cd client/desktop && npx electron-builder --linux"
+    "installer": "npm run build",
+    "release": "npm run build && git tag v$(node -p \"require('./package.json').version\") && git push --tags"
+  },
+  "bin": {
+    "ai-assistant-build": "./build.js"
   }
 }
