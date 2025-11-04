@@ -1,32 +1,42 @@
 #!/bin/bash
 
-echo "🚀 AI Assistant Deployment Script"
-echo "================================="
+echo "🚀 AI Assistant Quick Deploy"
+echo "============================"
 
-# Build the application
-echo "📦 Building application..."
-npm run build
+# Check Node.js
+if ! command -v node &> /dev/null; then
+    echo "❌ Node.js is required but not installed"
+    exit 1
+fi
 
-# Create distribution packages
-echo "🎁 Creating distribution packages..."
+# Install dependencies
+echo "📦 Installing dependencies..."
+npm install
+
+# Build core engine
+echo "🔨 Building core engine..."
+cd core-engine && npm run build && cd ..
+
+# Build and package
+echo "📦 Building desktop application..."
 cd client/desktop
 
-# Windows
-echo "🪟 Building Windows package..."
-npx electron-builder --win --x64
+# Install desktop dependencies
+npm install
 
-# macOS
-echo "🍎 Building macOS package..."
-npx electron-builder --mac --x64 --arm64
+# Build for current platform
+echo "🎁 Packaging for $(uname -s)..."
+case "$(uname -s)" in
+    Linux*)     npx electron-builder --linux ;;
+    Darwin*)    npx electron-builder --mac ;;
+    CYGWIN*)    npx electron-builder --win ;;
+    MINGW*)     npx electron-builder --win ;;
+    *)          echo "Unknown OS"; exit 1 ;;
+esac
 
-# Linux
-echo "🐧 Building Linux package..."
-npx electron-builder --linux --x64
-
-echo "✅ Build complete!"
-echo "📁 Packages available in: client/desktop/dist/"
 echo ""
-echo "To distribute:"
-echo "• Windows: AI Assistant Setup 1.0.0.exe"
-echo "• macOS: AI Assistant-1.0.0.dmg" 
-echo "• Linux: ai-assistant_1.0.0_amd64.deb"
+echo "✅ Build complete!"
+echo "📁 Your installer is in: client/desktop/dist/"
+echo ""
+echo "To distribute to all platforms, run:"
+echo "  node build.js all"
