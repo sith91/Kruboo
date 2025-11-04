@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "build:installers": "node build-scripts/build-all.js",
+    "deploy": "./deploy.sh",
+    "release": "npm run build:installers && git tag v1.0.0 && git push --tags",
+    "package:win": "cd client/desktop && npx electron-builder --win",
+    "package:mac": "cd client/desktop && npx electron-builder --mac",
+    "package:linux": "cd client/desktop && npx electron-builder --linux"
+  }
+}
