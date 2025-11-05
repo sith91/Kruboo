@@ -56,11 +56,13 @@ export class ServiceClient {
     private isConnected: boolean = false;
     private retryCount: number = 0;
     private maxRetries: number = 3;
+    private voiceServiceUrl: string;
 
     constructor(baseUrl: string = 'http://localhost:8000') {
         this.logger = new Logger('ServiceClient');
         this.eventEmitter = new EventEmitter();
         this.baseUrl = baseUrl;
+        this.voiceServiceUrl = voiceServiceUrl;
     }
 
     async initialize(): Promise<void> {
@@ -205,6 +207,56 @@ export class ServiceClient {
     async getProvidersHealth(): Promise<any> {
         return await this.makeRequest('/health/providers', {}, 'GET');
     }
+
+    // Add voice-specific methods
+    async transcribeAudioDirect(audioData: ArrayBuffer, language: string = 'en-US'): Promise<any> {
+        const base64Audio = this.arrayBufferToBase64(audioData);
+        
+        const response = await this.makeVoiceRequest('/v1/transcribe', {
+            audio_data: base64Audio,
+            format: 'webm',
+            sample_rate: 16000,
+            language: language
+        });
+    
+        return response;
+    }
+
+async synthesizeSpeechDirect(text: string, voice: string = 'default'): Promise<ArrayBuffer> {
+    const response = await this.makeVoiceRequest('/v1/synthesize', {
+        text: text,
+        voice: voice,
+        rate: 200,
+        volume: 1.0
+    });
+
+    return this.base64ToArrayBuffer(response.audio_data);
+}
+
+private async makeVoiceRequest(endpoint: string, data: any, method: string = 'POST'): Promise<any> {
+    const url = `${this.voiceServiceUrl}${endpoint}`;
+    
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: method === 'POST' ? JSON.stringify(data) : undefined
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Voice service request failed: ${response.status} - ${errorText}`);
+        }
+
+        return await response.json();
+
+    } catch (error) {
+        this.logger.error(`Voice service request to ${endpoint} failed:`, error);
+        throw error;
+    }
+} 
 
     private async makeRequest(endpoint: string, data: any, method: string = 'POST'): Promise<any> {
         if (!this.isConnected) {
