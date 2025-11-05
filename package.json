@@ -11,9 +11,8 @@
     "installer": "npm run build",
     "release": "npm run build && git tag v$(node -p \"require('./package.json').version\") && git push --tags"
     "build:windows": "node build-scripts/build-windows.js",
-    "build:win": "node build-scripts/build-windows.js"
-     "build:macos": "node build-scripts/build-macos.js",
-    "build:mac": "node build-scripts/build-macos.js",
+    "installer:windows": "npm run build:windows",
+    "build:macos": "node build-scripts/build-macos.js",
     "notarize": "node build-scripts/notarize.js"
     "installer:macos": "node build-scripts/macos-installer.js",
     "build:installer:mac": "npm run build:mac && npm run installer:macos"
