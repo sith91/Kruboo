@@ -29,4 +29,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // File operations (from core engine)
     searchFiles: (directory: string, pattern: string) => 
         ipcRenderer.invoke('files:search', directory, pattern)
+
+ // Voice APIs
+  startListening: () => ipcRenderer.invoke('voice-start-listening'),
+  stopListening: () => ipcRenderer.invoke('voice-stop-listening'),
+  startVoiceService: () => ipcRenderer.invoke('voice-start-service'),
+  stopVoiceService: () => ipcRenderer.invoke('voice-stop-service'),
+  
+  // Event listeners
+  onVoiceTranscription: (callback: any) => 
+    ipcRenderer.on('voice-transcription', callback),
+  onVoiceCommandResponse: (callback: any) =>
+    ipcRenderer.on('voice-command-response', callback),
+
+    
 });
