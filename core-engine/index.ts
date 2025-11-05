@@ -8,6 +8,8 @@ export { ServiceClient } from './service-client.js';
 export { Logger } from './utils/logger.js';
 export { ConfigManager } from './utils/config.js';
 export { ServiceMonitor } from './utils/service-monitor.js';
+export { VoiceCapture } from './voice-engine/voice-capture.js';
+export { VoiceManager } from './voice-engine/voice-manager.js';
 
 // Simple core engine that focuses on system integration
 export class CoreEngine {
@@ -15,6 +17,7 @@ export class CoreEngine {
     private pluginManager: PluginManager;
     private blockchainManager: BlockchainManager;
     private serviceClient: ServiceClient;
+    private voiceManager: VoiceManager;
     private serviceMonitor: ServiceMonitor;
     private logger: Logger;
 
@@ -24,6 +27,7 @@ export class CoreEngine {
         this.pluginManager = new PluginManager();
         this.blockchainManager = new BlockchainManager();
         this.serviceClient = new ServiceClient();
+        this.voiceManager = new VoiceManager(this.serviceClient);
         this.serviceMonitor = new ServiceMonitor();
     }
 
@@ -37,6 +41,7 @@ export class CoreEngine {
         await this.systemIntegration.initialize();
         await this.pluginManager.initialize();
         await this.blockchainManager.initialize();
+        await this.voiceManager.initialize();
         await this.serviceMonitor.startMonitoring();
         
         this.logger.info('Core Engine initialized successfully');
@@ -67,6 +72,11 @@ export class CoreEngine {
         return this.serviceMonitor;
     }
 
+     // Add voice manager getter
+    getVoiceManager(): VoiceManager {
+        return this.voiceManager;
+    }
+
     // Simple delegation methods to Python services
     async processCommand(prompt: string, context: any = {}): Promise<any> {
         return await this.serviceClient.processAI({
@@ -85,6 +95,7 @@ export class CoreEngine {
     async shutdown(): Promise<void> {
         this.logger.info('Shutting down Core Engine...');
         this.serviceMonitor.stopMonitoring();
+        await this.voiceManager.destroy();
         await this.pluginManager.shutdown();
         this.logger.info('Core Engine shutdown complete');
     }
