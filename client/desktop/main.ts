@@ -1,9 +1,11 @@
 import { CoreEngine, ServiceClient } from '@ai-assistant/core';
 import { SimpleIPCHandler } from './src/main/simple-ipc-handler.js';
+import { VoiceHandler } from './voice/voice-handler';
 
 class DesktopApp {
     private coreEngine: CoreEngine;
     private ipcHandler: SimpleIPCHandler;
+    private voiceHandler: VoiceHandler;
 
     constructor() {
         this.coreEngine = new CoreEngine();
@@ -24,10 +26,27 @@ class DesktopApp {
             this.createFloatingWindow();
             
             this.logger.info('Desktop app initialized with Python-centric architecture');
+
+ // Initialize voice handler
+            this.voiceHandler = new VoiceHandler(mainWindow);
+// Start voice service on app start (or on demand)
+        if (this.shouldAutoStartVoiceService()) {
+            await this.voiceHandler.startVoiceService();
+        }
+    }
+
+    private shouldAutoStartVoiceService(): boolean {
+        // Check user preferences or configuration
+        return true; // or based on settings
+    }
+
+
+            
         });
 
         // ... rest of app lifecycle
     }
+
 
     // Remove complex service connector setup
     // Remove duplicate AI processing logic
