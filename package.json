@@ -16,4 +16,9 @@
   "bin": {
     "ai-assistant-build": "./build.js"
   }
+    "devDependencies": {
+        "fs-extra": "^11.1.0",
+        "plist": "^3.0.6",
+        "electron-notarize": "^1.2.2"
+  }
 }
