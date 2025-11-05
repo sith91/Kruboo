@@ -12,6 +12,9 @@
     "release": "npm run build && git tag v$(node -p \"require('./package.json').version\") && git push --tags"
     "build:windows": "node build-scripts/build-windows.js",
     "build:win": "node build-scripts/build-windows.js"
+     "build:macos": "node build-scripts/build-macos.js",
+    "build:mac": "node build-scripts/build-macos.js",
+    "notarize": "node build-scripts/notarize.js"
   },
   "bin": {
     "ai-assistant-build": "./build.js"
