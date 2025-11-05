@@ -1,0 +1,14 @@
+#!/bin/bash
+# Post-installation script for AI Assistant
+
+echo "AI Assistant: Post-installation setup..."
+
+# Set proper permissions
+chmod -R 755 "/Applications/AI Assistant.app"
+
+# Reset Launch Services database (helps with app recognition)
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/AI Assistant.app"
+
+echo "AI Assistant installation completed successfully!"
+
+exit 0
