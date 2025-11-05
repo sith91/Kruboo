@@ -15,6 +15,8 @@
      "build:macos": "node build-scripts/build-macos.js",
     "build:mac": "node build-scripts/build-macos.js",
     "notarize": "node build-scripts/notarize.js"
+    "installer:macos": "node build-scripts/macos-installer.js",
+    "build:installer:mac": "npm run build:mac && npm run installer:macos"
   },
   "bin": {
     "ai-assistant-build": "./build.js"
