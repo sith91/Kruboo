@@ -5,6 +5,8 @@ export interface AIRequest {
     prompt: string;
     context?: Record<string, any>;
     modelPreference?: string;
+    maxTokens?: number;
+    temperature?: number;
 }
 
 export interface AIResponse {
@@ -29,11 +31,31 @@ export interface VoiceCommandResponse {
     parameters: Record<string, any>;
 }
 
+export interface SystemCommandRequest {
+    command: string;
+    parameters?: Record<string, any>;
+}
+
+export interface SystemCommandResponse {
+    success: boolean;
+    result: any;
+    message: string;
+}
+
+export interface ServiceStatus {
+    healthy: boolean;
+    providers: any[];
+    connected: boolean;
+    timestamp: string;
+}
+
 export class ServiceClient {
     private logger: Logger;
     private eventEmitter: EventEmitter;
     private baseUrl: string;
     private isConnected: boolean = false;
+    private retryCount: number = 0;
+    private maxRetries: number = 3;
 
     constructor(baseUrl: string = 'http://localhost:8000') {
         this.logger = new Logger('ServiceClient');
@@ -43,26 +65,53 @@ export class ServiceClient {
 
     async initialize(): Promise<void> {
         try {
-            // Test connection
-            const response = await fetch(`${this.baseUrl}/health`);
+            this.logger.info(`Connecting to AI Gateway at ${this.baseUrl}...`);
+            
+            // Test connection with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            const response = await fetch(`${this.baseUrl}/health`, {
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
             if (!response.ok) {
-                throw new Error('AI Gateway not available');
+                throw new Error(`AI Gateway responded with status: ${response.status}`);
             }
             
+            const health = await response.json();
             this.isConnected = true;
+            this.retryCount = 0;
+            
             this.logger.info('Connected to AI Gateway successfully');
+            this.logger.info(`Available providers: ${Object.keys(health.providers).join(', ')}`);
+            
+            this.eventEmitter.emit('connected');
+            
         } catch (error) {
             this.logger.error('Failed to connect to AI Gateway:', error);
-            throw error;
+            
+            if (this.retryCount < this.maxRetries) {
+                this.retryCount++;
+                this.logger.info(`Retrying connection in 5 seconds... (${this.retryCount}/${this.maxRetries})`);
+                
+                setTimeout(() => this.initialize(), 5000);
+            } else {
+                throw new Error(`Unable to connect to AI Gateway after ${this.maxRetries} attempts`);
+            }
         }
     }
 
     // Unified AI Processing
     async processAI(request: AIRequest): Promise<AIResponse> {
-        const response = await this._makeRequest('/v1/ai/process', {
+        const response = await this.makeRequest('/v1/ai/process', {
             prompt: request.prompt,
             context: request.context || {},
-            model_preference: request.modelPreference
+            model_preference: request.modelPreference,
+            max_tokens: request.maxTokens || 1000,
+            temperature: request.temperature || 0.7
         });
 
         return {
@@ -76,9 +125,9 @@ export class ServiceClient {
 
     // Voice Command Processing
     async processVoiceCommand(request: VoiceCommandRequest): Promise<VoiceCommandResponse> {
-        const base64Audio = Buffer.from(request.audioData).toString('base64');
+        const base64Audio = this.arrayBufferToBase64(request.audioData);
         
-        const response = await this._makeRequest('/v1/voice/command', {
+        const response = await this.makeRequest('/v1/voice/command', {
             audio_data: base64Audio,
             language: request.language || 'en-US'
         });
@@ -95,8 +144,8 @@ export class ServiceClient {
 
     // Direct Speech-to-Text
     async transcribeAudio(audioData: ArrayBuffer, language: string = 'en-US'): Promise<any> {
-        const base64Audio = Buffer.from(audioData).toString('base64');
-        return await this._makeRequest('/v1/voice/transcribe', {
+        const base64Audio = this.arrayBufferToBase64(audioData);
+        return await this.makeRequest('/v1/voice/transcribe', {
             audio_data: base64Audio,
             language: language
         });
@@ -104,58 +153,116 @@ export class ServiceClient {
 
     // Text-to-Speech
     async synthesizeSpeech(text: string, voice: string = 'default'): Promise<ArrayBuffer> {
-        const response = await this._makeRequest('/v1/voice/synthesize', {
+        const response = await this.makeRequest('/v1/voice/synthesize', {
             text: text,
             voice: voice
         });
 
-        // Convert base64 back to ArrayBuffer
-        return Buffer.from(response.audio_data, 'base64');
+        return this.base64ToArrayBuffer(response.audio_data);
     }
 
     // System Commands
-    async executeSystemCommand(command: string, parameters: Record<string, any> = {}): Promise<any> {
-        return await this._makeRequest('/v1/system/execute', {
+    async executeSystemCommand(command: string, parameters: Record<string, any> = {}): Promise<SystemCommandResponse> {
+        const response = await this.makeRequest('/v1/system/execute', {
             command: command,
             parameters: parameters
         });
+
+        return {
+            success: response.success,
+            result: response.result,
+            message: response.message
+        };
     }
 
     // Get available models
     async getAvailableModels(): Promise<any[]> {
-        const response = await this._makeRequest('/v1/models', {}, 'GET');
+        const response = await this.makeRequest('/v1/models', {}, 'GET');
         return response.models;
     }
 
     // Health check
-    async healthCheck(): Promise<boolean> {
+    async healthCheck(): Promise<ServiceStatus> {
         try {
-            const response = await fetch(`${this.baseUrl}/health`);
-            return response.ok;
-        } catch {
-            return false;
+            const response = await this.makeRequest('/health', {}, 'GET');
+            return {
+                healthy: response.status === 'healthy',
+                providers: response.providers || {},
+                connected: true,
+                timestamp: response.timestamp
+            };
+        } catch (error) {
+            return {
+                healthy: false,
+                providers: [],
+                connected: false,
+                timestamp: new Date().toISOString()
+            };
         }
     }
 
-    private async _makeRequest(endpoint: string, data: any, method: string = 'POST'): Promise<any> {
+    // Provider-specific health check
+    async getProvidersHealth(): Promise<any> {
+        return await this.makeRequest('/health/providers', {}, 'GET');
+    }
+
+    private async makeRequest(endpoint: string, data: any, method: string = 'POST'): Promise<any> {
         if (!this.isConnected) {
             throw new Error('Service client not connected to AI Gateway');
         }
 
-        const response = await fetch(`${this.baseUrl}${endpoint}`, {
-            method: method,
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: method === 'POST' ? JSON.stringify(data) : undefined
-        });
+        const url = `${this.baseUrl}${endpoint}`;
+        
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: method === 'POST' ? JSON.stringify(data) : undefined
+            });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Service request failed: ${response.status} - ${errorText}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Service request failed: ${response.status} - ${errorText}`);
+            }
+
+            return await response.json();
+
+        } catch (error) {
+            this.logger.error(`Service request to ${endpoint} failed:`, error);
+            
+            // Check if it's a connection error
+            if (error.message.includes('fetch') || error.message.includes('network')) {
+                this.isConnected = false;
+                this.eventEmitter.emit('disconnected');
+            }
+            
+            throw error;
         }
+    }
 
-        return await response.json();
+    private arrayBufferToBase64(buffer: ArrayBuffer): string {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return btoa(binary);
+    }
+
+    private base64ToArrayBuffer(base64: string): ArrayBuffer {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    // Connection status
+    getConnectionStatus(): boolean {
+        return this.isConnected;
     }
 
     // Event handling
@@ -165,5 +272,11 @@ export class ServiceClient {
 
     off(event: string, callback: (...args: any[]) => void): void {
         this.eventEmitter.off(event, callback);
+    }
+
+    // Reconnect manually
+    async reconnect(): Promise<void> {
+        this.logger.info('Manual reconnection requested');
+        await this.initialize();
     }
 }
