@@ -1,0 +1,20 @@
+{
+    "open_app": ["open ", "launch ", "start ", "all been ", "up in ", "run ", "go to ", "browse "],
+    "close_app": ["close ", "quit ", "exit ", "clothes ", "stop "],
+    "get_weather": [
+      "weather",
+      "temperature",
+      "how cold",
+      "how hot",
+      "is it raining",
+      "weather to do",
+      "weather today"
+    ],
+    "get_time": ["time", "clock", "what time", "tell time"],
+    "save_note": ["take a note", "save a note", "note down", "write down"],
+    "hide_orb": ["go away", "hide yourself", "dismiss", "minimize orb"],
+    "media_play": ["play ", "put on ", "listen to ", "hear ", "i want to listen to ", "i want to hear "],
+    "media_command": ["pause music", "stop music", "next song", "skip song", "previous track", "previous song", "pause playback"],
+    "send_message": ["whatsapp ", "message ", "email ", "viber ", "gmail ", "compose "],
+    "check_emails": ["check my emails", "any new emails", "check my promotions", "check my unread", "read my emails"]
+}

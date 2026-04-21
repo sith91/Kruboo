@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:8000 https://*.googleapis.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <title>Nexus AI Chat</title>
+</head>
+<body style="background: transparent; -webkit-app-region: drag;">
+    <div id="app" class="nexus-chat">
+        <!-- Sidebar for Multi-Chat Management -->
+        <aside class="sidebar no-drag">
+            <div class="sidebar-header">
+                <button id="new-chat-btn" class="new-chat-btn">+ New Chat</button>
+            </div>
+            <div id="chat-list" class="chat-list">
+                <!-- Dynamic Chat List Items -->
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-viewport">
+            <header class="chat-header">
+                <div class="header-info">
+                    <h1 id="current-chat-title">New Conversation</h1>
+                    <span id="chat-status" class="status-indicator">Online</span>
+                </div>
+                <div class="header-actions">
+                    <button id="minimize-btn" class="icon-btn">✕</button>
+                </div>
+            </header>
+
+            <div id="messages-container" class="messages-container no-drag">
+                <div class="message assistant">
+                    <div class="message-bubble">
+                        Welcome to Nexus AI. I'm ready to assist with text or voice commands.
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-container no-drag">
+                <div class="input-wrapper">
+                    <textarea id="prompt-input" placeholder="Ask me anything..." rows="1"></textarea>
+                    <button id="send-btn" class="send-btn" title="Send">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="19" x2="12" y2="5"/>
+                            <polyline points="5 12 12 5 19 12"/>
+                        </svg>
+                    </button>
+                    <button id="stop-btn" class="stop-btn" title="Stop" style="display: none;">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modified renderer logic is integrated but we will update renderer.js as well -->
+    <script src="renderer.js"></script>
+</body>
+</html>

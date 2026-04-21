@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:8000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --accent: #6b4cff; --bg: rgba(10, 10, 10, 0.8); --border: rgba(255, 255, 255, 0.1); }
+        body { background: transparent; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Inter', sans-serif; color: #f0f0f5; -webkit-user-select: none; }
+        .settings-card { width: 480px; background: var(--bg); backdrop-filter: blur(50px); -webkit-backdrop-filter: blur(50px); border: 1px solid var(--border); border-radius: 28px; padding: 30px; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.9); display: flex; flex-direction: column; gap: 20px; -webkit-app-region: drag; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 20px; font-weight: 500; margin: 0; letter-spacing: -0.5px; }
+        .close-btn { background: rgba(255,255,255,0.05); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; -webkit-app-region: no-drag; }
+        
+        .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; -webkit-app-region: no-drag; }
+        .tab-btn { background: none; border: none; color: #777; cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 0; position: relative; transition: color 0.2s; }
+        .tab-btn.active { color: white; }
+        .tab-btn.active::after { content: ''; position: absolute; bottom: -11px; left: 0; width: 100%; height: 2.5px; background: var(--accent); border-radius: 2px; }
+
+        .tab-content { display: none; -webkit-app-region: no-drag; max-height: 450px; overflow-y: auto; padding-right: 10px; margin-top: 15px; }
+        .tab-content.active { display: block; }
+
+        .section { background: rgba(255,255,255,0.03); border-radius: 18px; padding: 18px; border: 1px solid var(--border); margin-bottom: 15px; }
+        .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--accent); margin-bottom: 12px; font-weight: 700; opacity: 0.8; }
+        
+        .control-group { display: flex; flex-direction: column; gap: 12px; }
+        label { font-size: 12px; color: #aaa; font-weight: 500; }
+        input, select { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 12px; padding: 12px; color: white; font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.2s; }
+        input:focus, select:focus { border-color: var(--accent); }
+
+        .color-palette { display: flex; gap: 12px; margin-top: 8px; }
+        .color-swatch { width: 30px; height: 30px; border-radius: 10px; cursor: pointer; border: 2.5px solid transparent; transition: transform 0.2s; }
+        .color-swatch.active { border-color: white; transform: scale(1.1); }
+
+        .identity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .upload-card { border: 2px dashed rgba(255,255,255,0.1); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; }
+        .upload-card:hover { border-color: var(--accent); background: rgba(107, 76, 255, 0.05); }
+        .upload-card span { font-size: 24px; }
+        .upload-card p { margin: 0; font-size: 10px; color: #777; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        .plugin-item { background: rgba(255,255,255,0.04); padding: 12px 16px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+        .plugin-item button { background: var(--accent); border: none; color: white; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; }
+
+        .connection-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 18px; padding: 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .conn-info { display: flex; gap: 12px; align-items: center; }
+        .conn-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; }
+        .conn-icon.gmail { background: #EA4335; }
+        .conn-icon.whatsapp { background: #25D366; }
+        .conn-details h4 { margin: 0; font-size: 14px; font-weight: 500; }
+        .conn-details p { margin: 2px 0 0; font-size: 11px; color: #777; }
+        
+        .save-btn { background: white; color: black; border: none; padding: 15px; border-radius: 16px; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 10px; -webkit-app-region: no-drag; transition: opacity 0.2s; }
+        .save-btn:hover { opacity: 0.9; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div class="settings-card">
+        <header class="header">
+            <h1 data-i18n="settings_title">Preferences</h1>
+            <button id="close-btn" class="close-btn">✕</button>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" onclick="switchTab('general')" data-i18n="tab_general">General</button>
+            <button class="tab-btn" onclick="switchTab('identity')" data-i18n="tab_identity">Identity</button>
+            <button class="tab-btn" onclick="switchTab('connections')" data-i18n="tab_connections">Links</button>
+            <button class="tab-btn" onclick="switchTab('ai')" data-i18n="tab_ai">Engine</button>
+        </nav>
+
+        <!-- General Tab -->
+        <div id="general" class="tab-content active">
+            <div class="section">
+                <div class="section-title" data-i18n="settings_appearance">UI Appearance</div>
+                <div class="color-palette">
+                    <div class="color-swatch active" style="background: #6b4cff;" title="Purple Nebula"></div>
+                    <div class="color-swatch" style="background: #00d2ff;" title="Cyber Cyan"></div>
+                    <div class="color-swatch" style="background: #ff00c8;" title="Electric Pink"></div>
+                    <div class="color-swatch" style="background: #00ff87;" title="Green Matrix"></div>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title" data-i18n="settings_persona">Assistant Persona</div>
+                <div class="control-group">
+                    <label data-i18n="settings_assistant_name">Name</label>
+                    <input type="text" id="assistant-name" placeholder="Nexus AI">
+                    <label data-i18n="settings_native_lang">System Language</label>
+                    <select id="lang-selection">
+                        <option value="en-US">English (US)</option>
+                        <option value="si-LK">Sinhala</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Identity Tab -->
+        <div id="identity" class="tab-content">
+            <div class="identity-grid">
+                <div class="upload-card" id="avatar-btn">
+                    <span>🖼️</span>
+                    <p data-i18n="settings_avatar">Avatar</p>
+                </div>
+                <div class="upload-card" id="voice-btn">
+                    <span>🎙️</span>
+                    <p data-i18n="settings_voice_clone">Voice Clone</p>
+                </div>
+            </div>
+            <input type="file" id="avatar-input" style="display:none" accept="image/*">
+            <input type="file" id="voice-input" style="display:none" accept="audio/*">
+
+            <div class="section" style="margin-top:20px">
+                <div class="section-title" data-i18n="settings_voice_engine">Voice Generation</div>
+                <div class="control-group">
+                    <label data-i18n="settings_v_mode">Synthesis Engine</label>
+                    <select id="voice-mode">
+                        <option value="offline">Offline (Private/Local)</option>
+                        <option value="neural">Neural (ElevenLabs API)</option>
+                    </select>
+                    <label data-i18n="settings_eleven_key">ElevenLabs Key</label>
+                    <input type="password" id="eleven-key" placeholder="eb-...">
+                </div>
+            </div>
+        </div>
+
+        <!-- Connections Tab -->
+        <div id="connections" class="tab-content">
+            <div class="section-title" data-i18n="settings_active_links">Active App Links</div>
+            <div class="connection-card">
+                <div class="conn-info">
+                    <div class="conn-icon gmail">G</div>
+                    <div class="conn-details">
+                        <h4>Gmail</h4>
+                        <p id="gmail-status">Disconnected</p>
+                    </div>
+                </div>
+                <button id="connect-gmail-btn" class="connect-btn">Connect</button>
+            </div>
+            
+            <div class="section-title" style="margin-top:20px" data-i18n="settings_plugin_lib">Skill Library</div>
+            <div class="plugin-item">
+                <span>🌐 Web Browser Agent</span>
+                <button data-i18n="settings_installed">Active</button>
+            </div>
+            <div class="plugin-item">
+                <span>📂 File Manager</span>
+                <button data-i18n="settings_installed">Active</button>
+            </div>
+            <div class="plugin-item">
+                <span>🎶 Spotify Bridge</span>
+                <button style="background:rgba(255,255,255,0.1)">Install</button>
+            </div>
+        </div>
+
+        <!-- AI Engine Tab -->
+        <div id="ai" class="tab-content">
+            <div class="section">
+                <div class="section-title" data-i18n="settings_brain">Core Brain</div>
+                <div class="control-group">
+                    <label data-i18n="settings_model_sel">Model Authority</label>
+                    <select id="llm-model">
+                        <option value="gpt-4">GPT-4 Turbo (Cloud)</option>
+                        <option value="llama-3">Llama 3 (Local Privacy)</option>
+                        <option value="mistral">Mistral (Local Privacy)</option>
+                    </select>
+                    <label data-i18n="settings_api_key">OpenAI API Key</label>
+                    <input type="password" id="api-key" placeholder="sk-...">
+                </div>
+            </div>
+        </div>
+
+        <button id="save-settings" class="save-btn" data-i18n="settings_save">Save & Sync</button>
+    </div>
+
+    <script>
+        const savedSettings = JSON.parse(localStorage.getItem('nexus-settings')) || {
+            name: 'Nexus AI', lang: 'en-US', model: 'gpt-4', feeling: 'professional', 
+            apiKey: '', elevenKey: '', voiceMode: 'offline'
+        };
+
+        // UI Fill
+        document.getElementById('assistant-name').value = savedSettings.name || '';
+        document.getElementById('lang-selection').value = savedSettings.lang || 'en-US';
+        document.getElementById('llm-model').value = savedSettings.model || 'gpt-4';
+        document.getElementById('api-key').value = savedSettings.apiKey || '';
+        document.getElementById('eleven-key').value = savedSettings.elevenKey || '';
+        document.getElementById('voice-mode').value = savedSettings.voiceMode || 'offline';
+
+        // i18n Engine
+        async function loadLocales(lang) {
+            try {
+                const response = await fetch(`locales/${lang}.json`);
+                const strings = await response.json();
+                document.querySelectorAll('[data-i18n]').forEach(el => {
+                    const key = el.getAttribute('data-i18n');
+                    if (strings[key]) el.innerText = strings[key];
+                });
+            } catch (err) { console.warn("Locale load failed. Using defaults."); }
+        }
+        loadLocales(savedSettings.lang);
+
+        document.getElementById('lang-selection').onchange = (e) => loadLocales(e.target.value);
+
+        function switchTab(id) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        document.getElementById('save-settings').onclick = () => {
+            const data = {
+                name: document.getElementById('assistant-name').value,
+                lang: document.getElementById('lang-selection').value,
+                model: document.getElementById('llm-model').value,
+                apiKey: document.getElementById('api-key').value,
+                elevenKey: document.getElementById('eleven-key').value,
+                voiceMode: document.getElementById('voice-mode').value
+            };
+            localStorage.setItem('nexus-settings', JSON.stringify(data));
+            window.aiBackend.closeSettings();
+        };
+
+        document.getElementById('close-btn').onclick = () => window.aiBackend.closeSettings();
+        document.getElementById('avatar-btn').onclick = () => document.getElementById('avatar-input').click();
+        document.getElementById('voice-btn').onclick = () => document.getElementById('voice-input').click();
+
+        // Color palette switching
+        document.querySelectorAll('.color-swatch').forEach(swatch => {
+            swatch.onclick = function() {
+                document.querySelector('.color-swatch.active').classList.remove('active');
+                this.classList.add('active');
+            };
+        });
+
+        // Gmail Link
+        document.getElementById('connect-gmail-btn').onclick = async function() {
+            this.innerText = "...";
+            const res = await fetch('http://localhost:8000/auth/gmail');
+            const data = await res.json();
+            if (data.status === "success") {
+                document.getElementById('gmail-status').innerText = "Active";
+                this.innerText = "Linked"; this.disabled = true;
+            }
+        };
+    </script>
+</body>
+</html>

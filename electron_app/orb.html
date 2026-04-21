@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:8000 https://*.googleapis.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh; width: 100vw;
+            flex-direction: column;
+            gap: 12px;
+            font-family: 'Inter', -apple-system, sans-serif;
+            margin: 0; padding: 0;
+            -webkit-user-select: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Orb ── */
+        .orb-wrapper {
+            position: relative;
+            width: 130px; height: 130px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-app-region: drag;
+        }
+
+        .main-orb {
+            width: 70px; height: 70px;
+            border-radius: 50%;
+            cursor: pointer;
+            position: relative;
+            background: radial-gradient(circle at 32% 28%, #c4b5fd, #7c3aed 55%, #4c1d95);
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,0.15) inset,
+                0 0 45px rgba(124, 58, 237, 0.65),
+                0 0 90px rgba(109, 40, 217, 0.28),
+                0 16px 40px rgba(0,0,0,0.55);
+            border: 1px solid rgba(255,255,255,0.2);
+            transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s;
+            z-index: 10;
+            -webkit-app-region: no-drag;
+        }
+
+        /* Glossy sheen */
+        .main-orb::before {
+            content: '';
+            position: absolute;
+            top: 10%; left: 16%;
+            width: 44%; height: 32%;
+            background: radial-gradient(ellipse, rgba(255,255,255,0.5) 0%, transparent 75%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .main-orb:hover {
+            transform: scale(1.1);
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,0.2) inset,
+                0 0 65px rgba(124, 58, 237, 0.85),
+                0 0 120px rgba(109, 40, 217, 0.38),
+                0 20px 48px rgba(0,0,0,0.6);
+        }
+
+        /* ── Aura Rings ── */
+        .aura {
+            position: absolute;
+            width: 84px; height: 84px;
+            border-radius: 50%;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .listening .aura {
+            animation: aura-expand 2s infinite ease-out;
+            opacity: 1;
+        }
+        .listening .aura:nth-child(1) { animation-delay: 0s;    border-color: rgba(139, 92, 246, 0.5); }
+        .listening .aura:nth-child(2) { animation-delay: 0.65s; border-color: rgba(99, 102, 241, 0.35); }
+        .listening .aura:nth-child(3) { animation-delay: 1.3s;  border-color: rgba(167, 139, 250, 0.2); }
+
+        @keyframes aura-expand {
+            0%   { transform: scale(0.95); opacity: 0.85; }
+            100% { transform: scale(2.7);  opacity: 0; }
+        }
+
+        /* ── Waveform ── */
+        .waveform {
+            display: none;
+            position: absolute;
+            bottom: 18px;
+            width: 110px; height: 36px;
+            gap: 3px;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        .listening .waveform { display: flex; }
+
+        .bar {
+            width: 2px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.6);
+            animation: wave-bounce 1s infinite ease-in-out;
+        }
+        .bar:nth-child(1) { height: 8px;  animation-delay: 0s;    }
+        .bar:nth-child(2) { height: 14px; animation-delay: 0.10s; }
+        .bar:nth-child(3) { height: 24px; animation-delay: 0.20s; }
+        .bar:nth-child(4) { height: 18px; animation-delay: 0.30s; }
+        .bar:nth-child(5) { height: 28px; animation-delay: 0.20s; }
+        .bar:nth-child(6) { height: 14px; animation-delay: 0.10s; }
+        .bar:nth-child(7) { height: 8px;  animation-delay: 0s;    }
+
+        @keyframes wave-bounce {
+            0%, 100% { transform: scaleY(1);   }
+            50%       { transform: scaleY(1.7); }
+        }
+
+        /* ── Status Label ── */
+        .orb-status {
+            font-size: 9.5px;
+            font-weight: 500;
+            letter-spacing: 2px;
+            color: rgba(255, 255, 255, 0.55);
+            background: rgba(255, 255, 255, 0.06);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 5px 14px;
+            border-radius: 30px;
+            border: 0.5px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* ── Listening State ── */
+        .listening .main-orb {
+            animation: listen-pulse 1.4s infinite alternate ease-in-out;
+            background: radial-gradient(circle at 32% 28%, #fda4af, #f43f5e 55%, #9f1239);
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,0.15) inset,
+                0 0 55px rgba(244, 63, 94, 0.8),
+                0 0 100px rgba(244, 63, 94, 0.32),
+                0 20px 45px rgba(0,0,0,0.55);
+        }
+        @keyframes listen-pulse {
+            0%   { transform: scale(1.08); }
+            100% { transform: scale(1.22); }
+        }
+
+        /* ── Context Menu (macOS popover) ── */
+        .context-menu {
+            position: absolute;
+            background: rgba(28, 28, 30, 0.78);
+            backdrop-filter: saturate(180%) blur(36px);
+            -webkit-backdrop-filter: saturate(180%) blur(36px);
+            border: 0.5px solid rgba(255, 255, 255, 0.14);
+            border-radius: 16px;
+            padding: 8px;
+            display: none;
+            flex-direction: row;
+            gap: 2px;
+            z-index: 100;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+            animation: pop 0.18s cubic-bezier(0.34, 1.4, 0.64, 1);
+        }
+        .context-menu.visible { display: flex; }
+
+        @keyframes pop {
+            from { transform: translate(-50%, -50%) scale(0.85); opacity: 0; }
+            to   { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+        }
+
+        /* ── Menu Items ── */
+        .menu-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            padding: 10px 12px;
+            border-radius: 11px;
+            transition: background 0.1s, transform 0.1s;
+            color: rgba(255, 255, 255, 0.85);
+            font-size: 9.5px;
+            font-weight: 500;
+            min-width: 62px;
+        }
+        .menu-item:hover  { background: rgba(255, 255, 255, 0.08); }
+        .menu-item:active { background: rgba(255, 255, 255, 0.04); transform: scale(0.94); }
+
+        .menu-item + .menu-item { border-left: 0.5px solid rgba(255, 255, 255, 0.07); }
+
+        .menu-icon {
+            width: 34px; height: 34px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        .menu-item:hover .menu-icon { background: rgba(255, 255, 255, 0.12); }
+
+        /* ── Suggestion Card ── */
+        .suggestion-card {
+            margin-top: 4px;
+            background: rgba(28, 28, 30, 0.72);
+            backdrop-filter: saturate(180%) blur(28px);
+            -webkit-backdrop-filter: saturate(180%) blur(28px);
+            border: 0.5px solid rgba(255, 255, 255, 0.12);
+            border-radius: 14px;
+            padding: 10px 12px;
+            color: rgba(255, 255, 255, 0.82);
+            font-size: 11.5px;
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            max-width: 240px;
+            text-align: left;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+            animation: pop 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+        }
+        .suggestion-label {
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            color: rgba(255, 255, 255, 0.3);
+        }
+        .suggestion-card a {
+            color: #0A84FF;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 400;
+            padding: 5px 8px;
+            border-radius: 8px;
+            background: rgba(10, 132, 255, 0.08);
+            transition: background 0.1s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .suggestion-card a::before { content: '↗'; font-size: 9px; opacity: 0.5; }
+        .suggestion-card a:hover  { background: rgba(10, 132, 255, 0.14); }
+        .suggestion-card a:active { transform: scale(0.97); }
+    </style>
+</head>
+<body id="main-body">
+    <div id="orb-container" class="orb-wrapper">
+        <div class="aura"></div><div class="aura"></div><div class="aura"></div>
+        <div class="main-orb" id="orb-button"></div>
+        <div class="waveform" id="waveform">
+            <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+        </div>
+
+        <div id="context-menu" class="context-menu">
+            <div class="menu-item" id="menu-chat">
+                <div class="menu-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                CHAT
+            </div>
+            <div class="menu-item" id="menu-settings">
+                <div class="menu-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1V15a2 2 0 0 1-2-2 2 2 0 0 1 2-2v-.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                </div>
+                SETTINGS
+            </div>
+            <div class="menu-item" id="menu-hide">
+                <div class="menu-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                </div>
+                HIDE
+            </div>
+        </div>
+    </div>
+    <div class="orb-status" id="orb-status">SIRI</div>
+    <div class="suggestion-card" id="suggestion-card"></div>
+    
+    <script>
+        const orbBtn = document.getElementById('orb-button');
+        const statusText = document.getElementById('orb-status');
+        const container = document.getElementById('orb-container');
+        const contextMenu = document.getElementById('context-menu');
+        const menuChat = document.getElementById('menu-chat');
+        const menuSettings = document.getElementById('menu-settings');
+        const menuHide = document.getElementById('menu-hide');
+        
+        let isListening = false;
+        
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            contextMenu.classList.add('visible');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!contextMenu.contains(e.target)) contextMenu.classList.remove('visible');
+        });
+
+        menuChat.addEventListener('click', () => {
+            window.aiBackend.toggleMainWindow();
+            contextMenu.classList.remove('visible');
+        });
+
+        menuSettings.addEventListener('click', () => {
+            window.aiBackend.openSettings();
+            contextMenu.classList.remove('visible');
+        });
+
+        menuHide.addEventListener('click', () => {
+            window.aiBackend.hideOrb();
+            contextMenu.classList.remove('visible');
+        });
+
+        orbBtn.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+            window.aiBackend.toggleMainWindow();
+        });
+
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let recognition = null;
+        let isAgentSpeaking = false;
+        let uiStrings = {};
+
+        async function loadLocales() {
+            const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+            const lang = settings.lang || 'en-US';
+            try {
+                // Fetch the locale config
+                // Because we are running locally, fetching local files might fail in strict Content Security Policy.
+                // It's safer to attempt fetch, fallback to default English if not found.
+                const response = await fetch(`locales/${lang}.json`);
+                uiStrings = await response.json();
+            } catch (err) {
+                console.error("Failed to load locales via fetch, attempting fallback.", err);
+                // Fallback mechanism if Electron file:// fetches fail
+                if (lang === 'si-LK') {
+                    uiStrings = {
+                        "status_idle": "කතා කිරීමට ඔබන්න", "status_listening": "සවන් දෙමින්...", "status_listening_web": "සවන් දෙමින් (වෙබ්)...", "status_transcribing": "පරිවර්තනය කරමින්...", "status_thinking": "...", "status_researching": "🧬 තොරතුරු සොයමින්...", "status_done": "අවසන්", "status_error": "දෝෂයකි", "status_connection_error": "සම්බන්ධතා දෝෂයකි", "status_no_audio": "ශබ්දයක් නැත", "status_mic_error": "මයික්‍රෆෝන් දෝෂයක්: ", "status_mic_error_short": "මයික්‍රෆෝන් දෝෂයක්", "status_permission_denied": "අවසර ලබා දී නැත", "status_permission_error": "අවසර දෝෂයකි", "status_stt_error": "හඳුනාගැනීමේ දෝෂයක්", "status_could_not_hear": "නැවත උත්සහ කරන්න"
+                    };
+                } else {
+                    uiStrings = {
+                        "status_idle": "TAP TO ASK", "status_listening": "LISTENING (RAW)...", "status_listening_web": "LISTENING (WEB)...", "status_transcribing": "TRANSCRIBING...", "status_thinking": "...", "status_researching": "🧬 RESEARCHING...", "status_done": "DONE", "status_error": "ERROR", "status_connection_error": "CONNECTION ERROR", "status_no_audio": "NO AUDIO", "status_mic_error": "MIC ERROR: ", "status_mic_error_short": "MIC ERROR", "status_permission_denied": "PERMISSION DENIED", "status_permission_error": "PERMISSION ERROR", "status_stt_error": "STT ERROR", "status_could_not_hear": "COULD NOT HEAR YOU"
+                    };
+                }
+            }
+            if (!isListening && !isAgentSpeaking) {
+                statusText.innerText = localize("status_idle");
+            }
+        }
+
+        function localize(key) {
+            return uiStrings[key] || key;
+        }
+        
+        // Try to use Backend STT directly for reliability, unless we need foreign languages
+        function startRecording() {
+            if (isListening || isAgentSpeaking) return;
+            const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+            if (settings.lang && settings.lang !== 'en-US' && !window.forceBackendSTT) {
+                console.log("Using Web STT for language: " + settings.lang);
+                startBrowserSTT();
+            } else {
+                startBackendSTT();
+            }
+        }
+
+        function startBrowserSTT() {
+            if (!recognition) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    console.error("Web Speech API not supported.");
+                    startBackendSTT();
+                    return;
+                }
+                const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+                recognition = new SpeechRecognition();
+                recognition.lang = settings.lang || 'en-US';
+                recognition.continuous = false;
+                recognition.interimResults = true;
+
+                recognition.onstart = () => {
+                    isListening = true;
+                    container.classList.add('listening');
+                    statusText.innerText = localize("status_listening_web");
+                    window.aiBackend.setOrbStatus('listening');
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Browser Speech Recognition Error:', event.error);
+                    if (event.error === 'network') {
+                        console.warn('Switching to Backend STT due to Network error');
+                        window.useBackendSTT = true;
+                        recognition.stop();
+                        startBackendSTT();
+                    } else if (event.error === 'not-allowed') {
+                        statusText.innerText = localize("status_permission_denied");
+                        isListening = false;
+                        container.classList.remove('listening');
+                    } else {
+                        statusText.innerText = localize("status_mic_error") + event.error.toUpperCase();
+                        isListening = false;
+                        container.classList.remove('listening');
+                    }
+                };
+
+                recognition.onresult = (event) => {
+                    let transcript = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) transcript += event.results[i][0].transcript;
+                    statusText.innerText = transcript.toUpperCase();
+                    if (event.results[0].isFinal) {
+                        recognition.stop();
+                        finishVoiceInteraction(transcript);
+                    }
+                };
+
+                recognition.onend = () => {
+                    if (isListening && !window.useBackendSTT) {
+                        container.classList.remove('listening');
+                        isListening = false;
+                    }
+                };
+                
+                setTimeout(() => {
+                    if (!isListening && !isAgentSpeaking) {
+                        statusText.innerText = localize("status_idle");
+                        statusText.style.transform = 'scale(1)';
+                    }
+                }, 1500);
+            }
+            try { recognition.start(); } catch(e) { console.error(e); }
+        }
+
+        let audioBuffer = [];
+        let scriptProcessor = null;
+        let source = null;
+        let audioContext = null;
+
+        async function startBackendSTT() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                .then(stream => {
+                    isListening = true;
+                    container.classList.add('listening');
+                    statusText.innerText = localize("status_listening");
+                    window.aiBackend.setOrbStatus('listening');
+                    
+                    source = audioContext.createMediaStreamSource(stream);
+                    
+                    // Add VAD for faster, Siri-like cutoffs
+                    const analyser = audioContext.createAnalyser();
+                    analyser.minDecibels = -70; // Silence threshold
+                    analyser.smoothingTimeConstant = 0.1;
+                    analyser.fftSize = 512;
+                    source.connect(analyser);
+
+                    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                    
+                    audioBuffer = [];
+                    let silenceStart = Date.now();
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                    scriptProcessor.onaudioprocess = (event) => {
+                        if (!isListening) return;
+                        const inputData = event.inputBuffer.getChannelData(0);
+                        audioBuffer.push(new Float32Array(inputData));
+
+                        analyser.getByteFrequencyData(dataArray);
+                        const sum = dataArray.reduce((a, b) => a + b, 0);
+                        if (sum > 600) { 
+                            silenceStart = Date.now(); // Reset silence clock if speaking
+                        } else if (Date.now() - silenceStart > 1200) { 
+                            // Automatically stop after 1.2s of silence
+                            stopRecording();
+                        }
+                    };
+
+                    source.connect(scriptProcessor);
+                    scriptProcessor.connect(audioContext.destination);
+
+                    setTimeout(() => { if (isListening) stopRecording(); }, 15000); // 15s max
+                });
+            } catch (err) {
+                console.error('Could not start Backend STT:', err);
+                statusText.innerText = localize("status_mic_error_short");
+            }
+        }
+
+        async function stopRecording() {
+            if (!isListening) return;
+            isListening = false;
+            container.classList.remove('listening');
+            window.aiBackend.setOrbStatus('idle');
+
+            if (scriptProcessor) {
+                scriptProcessor.disconnect();
+                source.disconnect();
+            }
+            if (audioContext) audioContext.close();
+
+            if (!audioBuffer || audioBuffer.length === 0) {
+                statusText.innerText = localize("status_no_audio");
+                return;
+            }
+
+            statusText.innerText = localize("status_transcribing");
+            
+            try {
+                const totalSamples = audioBuffer.reduce((acc, b) => acc + b.length, 0);
+                const resultBuffer = new Float32Array(totalSamples);
+                let offset = 0;
+                for (const b of audioBuffer) {
+                    resultBuffer.set(b, offset);
+                    offset += b.length;
+                }
+
+                const wavBlob = encodeWAVFromFloat32(resultBuffer, audioContext.sampleRate);
+                
+                const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+                const formData = new FormData();
+                formData.append('file', wavBlob, 'voice.wav');
+                formData.append('language', settings.lang || 'en-US');
+                if (settings.apiKey) {
+                    formData.append('api_key', settings.apiKey);
+                }
+
+                const response = await fetch('http://127.0.0.1:8000/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.text && !data.text.includes("STT could not understand")) {
+                    finishVoiceInteraction(data.text);
+                } else {
+                    statusText.innerText = localize("status_could_not_hear");
+                    setTimeout(() => { statusText.innerText = localize("status_idle"); }, 2000);
+                }
+            } catch (err) {
+                console.error('STT Pipeline Failure:', err);
+                statusText.innerText = localize("status_stt_error");
+            }
+        }
+
+        function encodeWAVFromFloat32(samples, sampleRate) {
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+            
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 32 + samples.length * 2, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, 1, true); // Mono
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, samples.length * 2, true);
+            
+            let offset = 44;
+            for (let i = 0; i < samples.length; i++, offset += 2) {
+                const s = Math.max(-1, Math.min(1, samples[i]));
+                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            }
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        orbBtn.addEventListener('click', () => {
+            if (isListening) {
+                stopRecording();
+                if (recognition) recognition.stop();
+            } else {
+                startRecording();
+            }
+        });
+        
+        async function finishVoiceInteraction(query) {
+            statusText.innerText = localize("status_thinking");
+            window.aiBackend.setOrbStatus('thinking');
+            
+            try {
+                const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+                const provider = settings.apiKey ? 'openai' : 'local';
+                let fullResponse = "";
+                let sentenceBuffer = "";
+
+                window.aiBackend.onStreamToken((data) => {
+                    if (data.token) {
+                        fullResponse += data.token;
+                        sentenceBuffer += data.token;
+                        statusText.innerText = fullResponse.split('\n').pop().substring(0, 40).toUpperCase();
+
+                        // Siri-like streaming TTS: speak as soon as a sentence is formed
+                        const sentenceMatch = sentenceBuffer.match(/[^.!?]*[.!?]\s*/);
+                        if (sentenceMatch) {
+                            const sentence = sentenceMatch[0];
+                            sentenceBuffer = sentenceBuffer.replace(sentence, "");
+                            if (sentence.trim().length > 2) {
+                                speakText(sentence);
+                            }
+                        }
+                    }
+                    
+                    if (data.action === "deep_research_start") {
+                        statusText.innerText = localize("status_researching");
+                    } else if (data.action === "hide_orb") {
+                        setTimeout(() => window.aiBackend.hideOrb(), 3000); // Give time for TTS to play
+                    } else if (data.action === "stream_done") {
+                        isReceivingStream = false;
+                        
+                        // Speak any remaining unpunctuated text
+                        if (sentenceBuffer.trim().length > 0) {
+                            speakText(sentenceBuffer);
+                        }
+
+                        statusText.innerText = localize("status_done");
+                        window.aiBackend.setOrbStatus('idle');
+                    }
+                    
+                    if (data.action === "stream_done") {
+                        const chats = JSON.parse(localStorage.getItem('nexus-chats')) || [{ id: Date.now(), title: 'Voice', messages: [] }];
+                        const activeChat = chats[0];
+                        activeChat.messages.push({ text: query, isUser: true, timestamp: Date.now() });
+                        activeChat.messages.push({ text: fullResponse, isUser: false, timestamp: Date.now() });
+                        localStorage.setItem('nexus-chats', JSON.stringify(chats));
+
+                        // Extract links natively to show as Siri-like cards
+                        const suggestionCard = document.getElementById('suggestion-card');
+                        const mdLinks = [...fullResponse.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g)];
+                        const rawLinks = [...fullResponse.matchAll(/(?<!\]\()https?:\/\/[^\s)]+/g)];
+                        
+                        if (mdLinks.length > 0 || rawLinks.length > 0) {
+                            suggestionCard.innerHTML = `<span class="suggestion-label">Suggestions</span>`;
+                            mdLinks.forEach(l => suggestionCard.innerHTML += `<a href="#" onclick="require('electron').shell.openExternal('${l[2]}')">${l[1]}</a>`);
+                            rawLinks.forEach(l => suggestionCard.innerHTML += `<a href="#" onclick="require('electron').shell.openExternal('${l[0]}')">Open Link</a>`);
+                            suggestionCard.style.display = 'flex';
+                        }
+
+                        setTimeout(() => { 
+                             statusText.innerText = localize("status_idle");
+                             window.aiBackend.setOrbStatus('idle');
+                             suggestionCard.style.display = 'none';
+                        }, 8000); // Wait 8 seconds before hiding UI
+                    }
+                });
+
+                window.aiBackend.onStreamError((err) => {
+                    console.error("AI Comm Error:", err);
+                    statusText.innerText = localize("status_error");
+                    container.classList.remove('thinking');
+                    window.aiBackend.setOrbStatus('idle');
+                });
+
+                window.aiBackend.askStream({
+                    query: query, 
+                    is_voice: true, 
+                    assistant_name: settings.name || "Nexus AI",
+                    llm_provider: provider,
+                    llm_model: settings.model || "llama-3",
+                    api_key: settings.apiKey || "",
+                    language: settings.lang || "en-US",
+                    feeling: settings.feeling || "professional"
+                });
+                
+            } catch (e) { 
+                console.error(e);
+                statusText.innerText = localize("status_connection_error"); 
+            }
+        }
+
+        async function speakText(text) {
+            let speechContent = text.split(/Sources:|Sources |Source:|Source /i)[0];
+            speechContent = speechContent.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1'); // Extract Markdown Titles
+            speechContent = speechContent.replace(/https?:\/\/[^\s]+/g, ''); // Strip any raw URLs from being spoken out loud
+            const cleanText = speechContent.replace(/[*#_`]/g, '').trim().substring(0, 500);
+            
+            if (!cleanText) return;
+
+            const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+            const lang = settings.lang || "en-US";
+
+            // If Sinhala, use the backend TTS endpoint for better quality/support
+            if (lang.includes('si')) {
+                try {
+                    isAgentSpeaking = true;
+                    console.log("Using Backend TTS for Sinhala...");
+                    const response = await fetch('http://127.0.0.1:8000/tts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: cleanText, language: 'si' })
+                    });
+                    
+                    if (!response.ok) throw new Error("TTS Backend Failed");
+                    
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    
+                    audio.onplay = () => { isAgentSpeaking = true; };
+                    audio.onended = () => { isAgentSpeaking = false; URL.revokeObjectURL(audioUrl); };
+                    audio.play();
+                    return;
+                } catch (err) {
+                    console.error("Backend TTS failed, falling back to Browser.", err);
+                }
+            }
+
+            if (!window.speechSynthesis) return;
+
+            const utterance = new SpeechSynthesisUtterance(cleanText);
+            utterance.lang = lang;
+            utterance.rate = 1.0;
+            utterance.pitch = 1.1;
+
+            utterance.onstart = () => { isAgentSpeaking = true; };
+            utterance.onend = () => { isAgentSpeaking = false; };
+            utterance.onerror = () => { isAgentSpeaking = false; };
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        window.addEventListener('load', () => {
+            loadLocales();
+        });
+
+        statusText.innerText = localize("status_idle");
+        
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                stream.getTracks().forEach(track => track.stop());
+                console.log('Mic ready');
+            })
+            .catch(err => {
+                console.error("Mic Error:", err);
+                statusText.innerText = localize("status_mic_error_short");
+            });
+    </script>
+</body>
+</html>

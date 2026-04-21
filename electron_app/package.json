@@ -1,0 +1,30 @@
+{
+  "name": "ai-assistant-electron",
+  "version": "1.0.0",
+  "description": "Desktop AI Assistant using Electron and Python backend",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^29.1.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.nexus.ai.assistant",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Nexus AI needs microphone access to listen for your voice commands."
+      },
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    }
+  },
+  "dependencies": {
+    "jimp": "^0.22.12"
+  }
+}
