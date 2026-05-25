@@ -56,7 +56,47 @@
         </main>
     </div>
 
+    <!-- Lock Screen Overlay -->
+    <div id="lock-screen" class="lock-overlay" style="display: none;">
+        <div class="lock-card glass">
+            <div class="lock-icon">🔒</div>
+            <h2>Nexus AI Locked</h2>
+            <p>Enter master passcode to continue</p>
+            <div class="passcode-input-container">
+                <input type="password" id="master-passcode" placeholder="••••" maxlength="6">
+                <button id="unlock-btn">Unlock</button>
+            </div>
+            <div id="unlock-error" class="error-text"></div>
+        </div>
+    </div>
+
     <!-- Modified renderer logic is integrated but we will update renderer.js as well -->
     <script src="renderer.js"></script>
+    <style>
+        .lock-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(20px);
+        }
+        .lock-card {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            padding: 40px; border-radius: 24px; text-align: center; width: 320px;
+        }
+        .lock-icon { font-size: 40px; margin-bottom: 20px; }
+        .lock-card h2 { font-size: 18px; margin: 0 0 10px; font-weight: 600; color: #fff; }
+        .lock-card p { font-size: 13px; color: #777; margin-bottom: 30px; }
+        .passcode-input-container { display: flex; flex-direction: column; gap: 12px; }
+        #master-passcode {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            color: #fff; text-align: center; font-size: 24px; letter-spacing: 8px;
+            padding: 12px; border-radius: 12px; outline: none;
+        }
+        #unlock-btn {
+            background: #4A90E2; color: white; border: none; padding: 12px;
+            border-radius: 12px; font-weight: 600; cursor: pointer;
+        }
+        .error-text { color: #ff4d4d; font-size: 12px; margin-top: 15px; min-height: 15px; }
+    </style>
 </body>
 </html>

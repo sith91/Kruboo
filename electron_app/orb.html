@@ -320,6 +320,14 @@
             contextMenu.classList.remove('visible');
         });
 
+        orbBtn.addEventListener('click', () => {
+            if (isListening) {
+                stopRecording();
+            } else if (!isAgentSpeaking) {
+                startRecording();
+            }
+        });
+
         orbBtn.addEventListener('dblclick', (e) => {
             e.stopPropagation();
             window.aiBackend.toggleMainWindow();
@@ -335,9 +343,6 @@
             const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
             const lang = settings.lang || 'en-US';
             try {
-                // Fetch the locale config
-                // Because we are running locally, fetching local files might fail in strict Content Security Policy.
-                // It's safer to attempt fetch, fallback to default English if not found.
                 const response = await fetch(`locales/${lang}.json`);
                 uiStrings = await response.json();
             } catch (err) {
@@ -365,6 +370,7 @@
         // Try to use Backend STT directly for reliability, unless we need foreign languages
         function startRecording() {
             if (isListening || isAgentSpeaking) return;
+            if (wakeWordRecognizer) { try { wakeWordRecognizer.stop(); } catch(e){} wakeWordRecognizer = null; }
             const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
             if (settings.lang && settings.lang !== 'en-US' && !window.forceBackendSTT) {
                 console.log("Using Web STT for language: " + settings.lang);
@@ -444,6 +450,63 @@
         let scriptProcessor = null;
         let source = null;
         let audioContext = null;
+        let wakeWordRecognizer = null;
+
+        function startWakeWordDetection() {
+            if (wakeWordRecognizer || isListening || isAgentSpeaking) return;
+            const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+            if (!settings.voiceActivation) {
+                console.log("Wake Word is disabled in settings.");
+                return;
+            }
+            
+            const assistantName = settings.name || "Kruboo";
+            console.log("Wake Word detection active for: " + assistantName);
+            statusText.innerText = "Listening for '" + assistantName + "'";
+            statusText.style.opacity = "0.5";
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                console.error("SpeechRecognition API not supported in this browser/environment.");
+                return;
+            }
+            
+            wakeWordRecognizer = new SpeechRecognition();
+            wakeWordRecognizer.continuous = true;
+            wakeWordRecognizer.interimResults = true;
+            wakeWordRecognizer.lang = settings.lang || 'en-US';
+            
+            wakeWordRecognizer.onresult = (event) => {
+                const s = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+                const name = (s.name || "Kruboo").toLowerCase();
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript.toLowerCase().trim();
+                    console.log("Passive transcript:", transcript);
+                    
+                    // Trigger if it includes the name
+                    if (transcript.includes(name)) {
+                        console.log("Wake word '" + name + "' detected!");
+                        statusText.innerText = "Waking up...";
+                        statusText.style.opacity = "1";
+                        if (wakeWordRecognizer) {
+                            wakeWordRecognizer.stop();
+                            wakeWordRecognizer = null;
+                        }
+                        setTimeout(startRecording, 100);
+                        return;
+                    }
+                }
+            };
+            wakeWordRecognizer.onerror = (err) => {
+                console.warn("Wake Word recognizer error:", err.error);
+            };
+            wakeWordRecognizer.onend = () => {
+                wakeWordRecognizer = null;
+                setTimeout(() => {
+                    if (!isListening && !isAgentSpeaking) startWakeWordDetection();
+                }, 500);
+            };
+            try { wakeWordRecognizer.start(); } catch(e) {}
+        }
 
         async function startBackendSTT() {
             try {
@@ -453,6 +516,7 @@
                     isListening = true;
                     container.classList.add('listening');
                     statusText.innerText = localize("status_listening");
+                    statusText.style.opacity = "1";
                     window.aiBackend.setOrbStatus('listening');
                     
                     source = audioContext.createMediaStreamSource(stream);
@@ -592,94 +656,102 @@
             }
         });
         
+        let ws;
+        function setupWebSocket() {
+            const token = "localhost";
+            ws = new WebSocket(`ws://localhost:8000/ws/${token}`);
+            ws.onclose = () => setTimeout(setupWebSocket, 3000);
+            ws.onerror = (e) => console.error("Orb WS Error:", e);
+        }
+        setupWebSocket();
+
         async function finishVoiceInteraction(query) {
             statusText.innerText = localize("status_thinking");
             window.aiBackend.setOrbStatus('thinking');
             
             try {
                 const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
-                const provider = settings.apiKey ? 'openai' : 'local';
+                const selectedModel = settings.model || 'llama-3';
+                let provider = 'local';
+                if (selectedModel.startsWith('gpt')) provider = 'openai';
+                else if (selectedModel.startsWith('claude')) provider = 'anthropic';
+                else if (selectedModel.startsWith('deepseek')) provider = 'deepseek';
+                else if (selectedModel.startsWith('grok')) provider = 'xai';
+
                 let fullResponse = "";
                 let sentenceBuffer = "";
 
-                window.aiBackend.onStreamToken((data) => {
-                    if (data.token) {
-                        fullResponse += data.token;
-                        sentenceBuffer += data.token;
-                        statusText.innerText = fullResponse.split('\n').pop().substring(0, 40).toUpperCase();
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: "chat_query",
+                        payload: {
+                            query: query,
+                            is_voice: true,
+                            chat_id: "voice",
+                            assistant_name: settings.name || "Kruboo",
+                            llm_provider: provider,
+                            llm_model: selectedModel,
+                            api_key: settings.apiKey || "",
+                            language: settings.lang || "en-US",
+                            feeling: settings.feeling || "professional"
+                        }
+                    }));
 
-                        // Siri-like streaming TTS: speak as soon as a sentence is formed
-                        const sentenceMatch = sentenceBuffer.match(/[^.!?]*[.!?]\s*/);
-                        if (sentenceMatch) {
-                            const sentence = sentenceMatch[0];
-                            sentenceBuffer = sentenceBuffer.replace(sentence, "");
-                            if (sentence.trim().length > 2) {
-                                speakText(sentence);
+                    const handleWSMessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === "chat_token") {
+                            const token = data.payload.token;
+                            if (token) {
+                                fullResponse += token;
+                                sentenceBuffer += token;
+                                statusText.innerText = fullResponse.split('\n').pop().substring(0, 40).toUpperCase();
+
+                                const sentenceMatch = sentenceBuffer.match(/[^.!?]*[.!?]\s*/);
+                                if (sentenceMatch) {
+                                    const sentence = sentenceMatch[0];
+                                    sentenceBuffer = sentenceBuffer.replace(sentence, "");
+                                    if (sentence.trim().length > 2) speakText(sentence);
+                                }
                             }
+                            if (data.payload.action === "deep_research_start") {
+                                statusText.innerText = localize("status_researching");
+                            }
+                        } else if (data.type === "chat_done") {
+                            ws.removeEventListener('message', handleWSMessage);
+                            
+                            if (sentenceBuffer.trim().length > 0) speakText(sentenceBuffer);
+
+                            statusText.innerText = localize("status_done");
+                            window.aiBackend.setOrbStatus('idle');
+                            startWakeWordDetection();
+
+                            // Save to local history
+                            const chats = JSON.parse(localStorage.getItem('nexus-chats')) || [{ id: Date.now(), title: 'Voice', messages: [] }];
+                            chats[0].messages.push({ text: query, isUser: true, timestamp: Date.now() });
+                            chats[0].messages.push({ text: fullResponse, isUser: false, timestamp: Date.now() });
+                            localStorage.setItem('nexus-chats', JSON.stringify(chats));
+
+                            // Suggestions logic
+                            const suggestionCard = document.getElementById('suggestion-card');
+                            const mdLinks = [...fullResponse.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g)];
+                            if (mdLinks.length > 0) {
+                                suggestionCard.innerHTML = `<span class="suggestion-label">Suggestions</span>`;
+                                mdLinks.forEach(l => suggestionCard.innerHTML += `<a href="#" onclick="require('electron').shell.openExternal('${l[2]}')">${l[1]}</a>`);
+                                suggestionCard.style.display = 'flex';
+                            }
+
+                            setTimeout(() => { 
+                                 statusText.innerText = localize("status_idle");
+                                 suggestionCard.style.display = 'none';
+                            }, 8000);
                         }
-                    }
-                    
-                    if (data.action === "deep_research_start") {
-                        statusText.innerText = localize("status_researching");
-                    } else if (data.action === "hide_orb") {
-                        setTimeout(() => window.aiBackend.hideOrb(), 3000); // Give time for TTS to play
-                    } else if (data.action === "stream_done") {
-                        isReceivingStream = false;
-                        
-                        // Speak any remaining unpunctuated text
-                        if (sentenceBuffer.trim().length > 0) {
-                            speakText(sentenceBuffer);
-                        }
-
-                        statusText.innerText = localize("status_done");
-                        window.aiBackend.setOrbStatus('idle');
-                    }
-                    
-                    if (data.action === "stream_done") {
-                        const chats = JSON.parse(localStorage.getItem('nexus-chats')) || [{ id: Date.now(), title: 'Voice', messages: [] }];
-                        const activeChat = chats[0];
-                        activeChat.messages.push({ text: query, isUser: true, timestamp: Date.now() });
-                        activeChat.messages.push({ text: fullResponse, isUser: false, timestamp: Date.now() });
-                        localStorage.setItem('nexus-chats', JSON.stringify(chats));
-
-                        // Extract links natively to show as Siri-like cards
-                        const suggestionCard = document.getElementById('suggestion-card');
-                        const mdLinks = [...fullResponse.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g)];
-                        const rawLinks = [...fullResponse.matchAll(/(?<!\]\()https?:\/\/[^\s)]+/g)];
-                        
-                        if (mdLinks.length > 0 || rawLinks.length > 0) {
-                            suggestionCard.innerHTML = `<span class="suggestion-label">Suggestions</span>`;
-                            mdLinks.forEach(l => suggestionCard.innerHTML += `<a href="#" onclick="require('electron').shell.openExternal('${l[2]}')">${l[1]}</a>`);
-                            rawLinks.forEach(l => suggestionCard.innerHTML += `<a href="#" onclick="require('electron').shell.openExternal('${l[0]}')">Open Link</a>`);
-                            suggestionCard.style.display = 'flex';
-                        }
-
-                        setTimeout(() => { 
-                             statusText.innerText = localize("status_idle");
-                             window.aiBackend.setOrbStatus('idle');
-                             suggestionCard.style.display = 'none';
-                        }, 8000); // Wait 8 seconds before hiding UI
-                    }
-                });
-
-                window.aiBackend.onStreamError((err) => {
-                    console.error("AI Comm Error:", err);
-                    statusText.innerText = localize("status_error");
-                    container.classList.remove('thinking');
-                    window.aiBackend.setOrbStatus('idle');
-                });
-
-                window.aiBackend.askStream({
-                    query: query, 
-                    is_voice: true, 
-                    assistant_name: settings.name || "Nexus AI",
-                    llm_provider: provider,
-                    llm_model: settings.model || "llama-3",
-                    api_key: settings.apiKey || "",
-                    language: settings.lang || "en-US",
-                    feeling: settings.feeling || "professional"
-                });
-                
+                    };
+                    ws.addEventListener('message', handleWSMessage);
+                } else {
+                    setupWebSocket();
+                    throw new Error("WS Disconnected");
+                }
             } catch (e) { 
                 console.error(e);
                 statusText.innerText = localize("status_connection_error"); 
@@ -687,12 +759,36 @@
         }
 
         async function speakText(text) {
-            let speechContent = text.split(/Sources:|Sources |Source:|Source /i)[0];
-            speechContent = speechContent.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1'); // Extract Markdown Titles
-            speechContent = speechContent.replace(/https?:\/\/[^\s]+/g, ''); // Strip any raw URLs from being spoken out loud
-            const cleanText = speechContent.replace(/[*#_`]/g, '').trim().substring(0, 500);
+            // 1. Use DOMParser to safely strip ALL HTML and entities (handles <br>, &lt;br&gt;, etc.)
+            const doc = new DOMParser().parseFromString(text, 'text/html');
+            let speechContent = doc.body.textContent || "";
+
+            // 2. Aggressive citation and source stripping
+            // Split at 'Sources:', 'Source:', 'Ref:', 'Link:', etc.
+            speechContent = speechContent.split(/(?:Sources?|Refs?|Links?|Citations?)\s*[:\-]/i)[0];
             
-            if (!cleanText) return;
+            // 3. Broad URL and technical fragment removal
+            // Matches http/https, www., and domains like 'google.com' followed by paths
+            speechContent = speechContent.replace(/(?:https?:\/\/|www\.)[^\s]+/gi, '');
+            speechContent = speechContent.replace(/[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?/gi, (match) => {
+                // Only replace if it looks like a real technical link (e.g. contains / or is a known domain)
+                return (match.includes('/') || match.includes('google.com') || match.includes('bing.com')) ? '' : match;
+            });
+            
+            // 4. Strip search parameters and HTML-like fragments
+            // Targets things like '?q=healthy+relationships' or '&hl=en'
+            speechContent = speechContent.replace(/[?&][a-zA-Z0-9]+=[^ \s]+/g, ''); 
+            speechContent = speechContent.replace(/&[a-z]+;/g, '');
+            
+            // 5. Cleanup: Remove markdown symbols and strange punctuation combos
+            let cleanText = speechContent
+                .replace(/[*#_`~\\<>]/g, ' ') 
+                .replace(/\s+/g, ' ') 
+                .trim()
+                .substring(0, 500);
+            
+            // Final check: Does it contain any actual speech-worthy content?
+            if (!cleanText || cleanText.length < 2) return;
 
             const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
             const lang = settings.lang || "en-US";
@@ -715,7 +811,7 @@
                     const audio = new Audio(audioUrl);
                     
                     audio.onplay = () => { isAgentSpeaking = true; };
-                    audio.onended = () => { isAgentSpeaking = false; URL.revokeObjectURL(audioUrl); };
+                    audio.onended = () => { isAgentSpeaking = false; URL.revokeObjectURL(audioUrl); startWakeWordDetection(); };
                     audio.play();
                     return;
                 } catch (err) {
@@ -731,14 +827,27 @@
             utterance.pitch = 1.1;
 
             utterance.onstart = () => { isAgentSpeaking = true; };
-            utterance.onend = () => { isAgentSpeaking = false; };
-            utterance.onerror = () => { isAgentSpeaking = false; };
+            utterance.onend = () => { isAgentSpeaking = false; startWakeWordDetection(); };
+            utterance.onerror = () => { isAgentSpeaking = false; startWakeWordDetection(); };
 
             window.speechSynthesis.speak(utterance);
         }
 
         window.addEventListener('load', () => {
             loadLocales();
+            startWakeWordDetection();
+            
+            window.aiBackend.onVoiceTrigger(() => {
+                if (!isListening && !isAgentSpeaking) {
+                    startRecording();
+                }
+            });
+
+            window.aiBackend.onSettingsUpdated(() => {
+                console.log("Settings updated, refreshing Wake Word status...");
+                if (wakeWordRecognizer) { try { wakeWordRecognizer.stop(); } catch(e){} wakeWordRecognizer = null; }
+                startWakeWordDetection();
+            });
         });
 
         statusText.innerText = localize("status_idle");

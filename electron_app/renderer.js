@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: Date.now(), title: 'First Conversation', messages: [] }
     ];
     let activeChatId = chats[0].id;
+    let ws;
 
     // Load Initial Chats
     function renderChatList() {
@@ -146,44 +147,64 @@ document.addEventListener('DOMContentLoaded', () => {
         stopBtn.style.display = 'flex';
 
         const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
-        const provider = settings.apiKey ? 'openai' : 'local';
+        const selectedModel = settings.model || 'llama-3';
+        let provider = 'local';
+        if (selectedModel.startsWith('gpt')) provider = 'openai';
+        else if (selectedModel.startsWith('claude')) provider = 'anthropic';
+        else if (selectedModel.startsWith('deepseek')) provider = 'deepseek';
+        else if (selectedModel.startsWith('grok')) provider = 'xai';
 
-        let fullResponse = "";
+        // --- WebSocket Chat Implementation ---
         const assistantMsgDiv = document.createElement('div');
         assistantMsgDiv.className = 'message assistant';
         assistantMsgDiv.innerHTML = `<div class="message-bubble">...</div>`;
         messagesContainer.appendChild(assistantMsgDiv);
         const bubble = assistantMsgDiv.querySelector('.message-bubble');
+        
+        let fullResponse = "";
 
-        window.aiBackend.onStreamToken((data) => {
-            if (data.token) {
-                fullResponse += data.token;
-                bubble.innerHTML = formatText(fullResponse);
-                messagesContainer.scrollTop = messagesContainer.scrollHeight;
-            }
-            if (data.action === "hide_orb") {
-                setTimeout(() => window.aiBackend.toggleMainWindow(), 2000);
-            }
-            if (data.action === "stream_done") {
-                finalizeResponse(fullResponse, data.full_response || fullResponse);
-            }
-        });
+        // Send query over WebSocket
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: "chat_query",
+                payload: {
+                    query: text,
+                    chat_id: activeChatId.toString(),
+                    assistant_name: settings.name || "Nexus AI",
+                    llm_provider: provider,
+                    llm_model: selectedModel,
+                    api_key: settings.apiKey || "",
+                    language: settings.lang || "en-US",
+                    feeling: settings.feeling || "professional"
+                }
+            }));
 
-        window.aiBackend.onStreamError((err) => {
-            bubble.innerText = "Error: " + err;
-            finalizeResponse(fullResponse, "Error occurred");
-        });
+            // Temporary listener for this specific query's tokens
+            const handleIncoming = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === "chat_token") {
+                    const token = data.payload.token;
+                    if (token) {
+                        fullResponse += token;
+                        bubble.innerHTML = formatText(fullResponse);
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    }
+                    if (data.payload.action === "hide_orb") {
+                        setTimeout(() => window.aiBackend.toggleMainWindow(), 2000);
+                    }
+                } else if (data.type === "chat_done") {
+                    finalizeResponse(fullResponse, fullResponse);
+                    ws.removeEventListener('message', handleIncoming);
+                }
+            };
 
-        window.aiBackend.askStream({
-            query: text,
-            chat_id: activeChatId.toString(),
-            assistant_name: settings.name || "Nexus AI",
-            llm_provider: provider,
-            llm_model: settings.model || "llama-3",
-            api_key: settings.apiKey || "",
-            language: settings.lang || "en-US",
-            feeling: settings.feeling || "professional"
-        });
+            ws.addEventListener('message', handleIncoming);
+        } else {
+            bubble.innerText = "Error: WebSocket Disconnected. Reconnecting...";
+            setupWebSocket();
+            finalizeResponse("", "Error: Connection lost.");
+        }
     }
 
     function finalizeResponse(response, finalFull) {
@@ -217,15 +238,91 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Fixed: Logic to handle Voice Commands and other storage changes
-    window.addEventListener('storage', (e) => {
-        if (e.key === 'nexus-chats') {
-            chats = JSON.parse(e.newValue);
-            renderMessages();
-            renderChatList();
-        }
-    });
+    // WebSocket Sync
+    function setupWebSocket() {
+        const token = "localhost"; // Local app always uses localhost token
+        ws = new WebSocket(`ws://localhost:8000/ws/${token}`);
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'message') {
+                const activeChat = chats.find(c => c.id === activeChatId);
+                const isUser = data.role === 'user';
+                const text = data.content;
+
+                // Avoid duplicate (if this device sent the message)
+                const lastMsg = activeChat.messages[activeChat.messages.length - 1];
+                if (lastMsg && lastMsg.text === text) return;
+
+                activeChat.messages.push({ text, isUser, timestamp: Date.now() });
+                
+                if (activeChat.messages.length === 1) {
+                    activeChat.title = text.substring(0, 20) + (text.length > 20 ? '...' : '');
+                }
+
+                saveChats();
+                renderMessages();
+                renderChatList();
+                
+                // If it's a remote user query, auto-switch to chat view iforb is active
+                if (isUser && window.aiBackend) {
+                    // Logic to show chat view if it was hidden
+                }
+            }
+        };
+
+        ws.onclose = () => {
+            console.log("WS closed, retrying...");
+            setTimeout(setupWebSocket, 3000);
+        };
+    }
+
+    // --- Security Logic ---
+    const lockScreen = document.getElementById('lock-screen');
+    const passcodeInp = document.getElementById('master-passcode');
+    const unlockBtn = document.getElementById('unlock-btn');
+    const unlockError = document.getElementById('unlock-error');
+
+    async function checkSecurity() {
+        try {
+            const res = await fetch('http://localhost:8000/security/status');
+            const data = await res.json();
+            if (data.is_locked) {
+                lockScreen.style.display = 'flex';
+                passcodeInp.focus();
+            }
+        } catch (e) { console.error("Security check failed:", e); }
+    }
+
+    async function verifyPasscode() {
+        const passcode = passcodeInp.value;
+        if (!passcode) return;
+
+        try {
+            const res = await fetch('http://localhost:8000/security/verify_passcode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode })
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                lockScreen.style.display = 'none';
+                unlockError.innerText = '';
+            } else {
+                unlockError.innerText = 'Invalid Passcode';
+                passcodeInp.value = '';
+                passcodeInp.focus();
+            }
+        } catch (e) { unlockError.innerText = 'Server Error'; }
+    }
+
+    if (unlockBtn) unlockBtn.onclick = verifyPasscode;
+    if (passcodeInp) passcodeInp.onkeydown = (e) => {
+        if (e.key === 'Enter') verifyPasscode();
+    };
 
     // Final Init
+    checkSecurity();
+    setupWebSocket();
     window.switchChat(activeChatId);
 });

@@ -41,3 +41,7 @@ flutter_app/pubspec.lock
 .env
 *.key
 *.pem
+
+# Local databases and runtime configs
+*.db
+python_backend/.sync_config.json

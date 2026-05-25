@@ -7,10 +7,16 @@ from plugins.universal_search import universal_research
 from plugins.local_intelligence import LocalIntelligencePlugin
 from agents.intent_parser import IntentParser
 import json
+from tools.memory_manager import MemoryManager
+
+memory = MemoryManager()
 
 # Plugin Registry
 from plugins.gmail_plugin import GmailPlugin
 _gmail_plugin = GmailPlugin()
+
+from plugins.calendar_plugin import CalendarPlugin
+_calendar_plugin = CalendarPlugin()
 
 try:
     from sinlingua.grammar_rule.grammar_main import GrammarMain as _SinLinguaGrammar
@@ -18,8 +24,8 @@ try:
 except Exception:
     _sinlingua_grammar = None
 
-# Simple in-memory chat history cache
-chat_histories = {}
+# Memory state for transient session data
+pending_media_queries = {}
 pending_media_queries = {}
 pending_platform_queries = {}  # Tracks song name awaiting platform clarification
 
@@ -50,9 +56,30 @@ def handle_user_query(
     Uses LocalIntelligencePlugin for model-specific persona and tag steering.
     """
     
-    if chat_id not in chat_histories:
-        chat_histories[chat_id] = []
+    # Retrieve persistent history
+    history = memory.get_history(chat_id, limit=6)
     
+    # Personal Memory Retrieval (Simple RAG)
+    relevant_facts = memory.get_relevant_facts(query)
+    memory_context = ""
+    if relevant_facts:
+        memory_context = "\nPERSONAL CONTEXT (Memories):\n- " + "\n- ".join(relevant_facts)
+    
+    # Check for Voice Automations (Macros)
+    autos = memory.get_automations()
+    for auto in autos:
+        if auto['trigger_type'] == 'voice' and auto['enabled']:
+            trigger_phrase = auto['trigger_config'].get('phrase', '').lower()
+            if trigger_phrase and trigger_phrase in query.lower():
+                print(f"Voice Automation Triggered: {auto['name']}")
+                from tools.automation_engine import AutomationEngine
+                # We can reuse the execute_action logic or call it directly
+                # For simplicity, we'll return a special result
+                # but better is to actually run it here
+                temp_engine = AutomationEngine() 
+                temp_engine.execute_action(auto)
+                return f"Automation '{auto['name']}' triggered successfully.", f"automation_{auto['id']}"
+
     # State interception for pending platform clarifications (e.g. "Spotify" or "YouTube Music")
     if pending_platform_queries.get(chat_id):
         original_track = pending_platform_queries[chat_id]
@@ -64,7 +91,16 @@ def handle_user_query(
         query = f"play {original_query} on {query}"
         pending_media_queries[chat_id] = None
 
-    history = chat_histories[chat_id]
+    # history already handled via memory manager
+    # Contextual Follow-up for Missing Apps
+    if history and "Would you like me to search for it on the internet?" in history[-1].get("content", ""):
+        if query.lower().strip().strip(".!") in ["yes", "yeah", "yep", "sure", "ok", "okay", "please", "do it"]:
+            import re
+            match = re.search(r"Could not find (.+?)\. Would you", history[-1]["content"])
+            if match:
+                app_name = match.group(1)
+                query = f"Search for {app_name}"
+
     query_lower = query.lower()
     
     # Sinhala Data Processing Layer (using SinLingua)
@@ -153,6 +189,30 @@ def handle_user_query(
             elif "unread" in query_lower: category = "UNREAD"
             tool_result = _gmail_plugin.execute("check_emails", {"category": category})
             action = f"check_emails: {category}"
+        elif action_intent == "get_calendar":
+            events = _calendar_plugin.execute("list_events", {"limit": 5})
+            if isinstance(events, list):
+                if not events:
+                    tool_result = "Your calendar is clear for the upcoming days."
+                else:
+                    lines = []
+                    for e in events:
+                        start = e['start'].get('dateTime', e['start'].get('date'))
+                        lines.append(f"- {e.get('summary')} at {start}")
+                    tool_result = "Here are your upcoming events:\n" + "\n".join(lines)
+            else:
+                tool_result = events # Error message
+            action = "get_calendar"
+        elif action_intent == "add_calendar":
+            # Simple parsing of "Event Name at Time"
+            parts = target_val.split(" at ", 1)
+            summary = parts[0]
+            # In a real app, we'd use LLM to parse ISO time. 
+            # For now, we'll assume a simple format or use current time as placeholder
+            start_time = datetime.datetime.utcnow().isoformat() + 'Z' 
+            end_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=1)).isoformat() + 'Z'
+            tool_result = _calendar_plugin.execute("add_event", {"summary": summary, "start_time": start_time, "end_time": end_time})
+            action = f"add_calendar: {summary}"
         elif action_intent == "send_message":
             parts = target_val.split(" to ", 1)
             msg = parts[0]
@@ -165,6 +225,20 @@ def handle_user_query(
             elif "previous" in query_lower: cmd = "previous"
             tool_result = control_media(cmd)
             action = f"media_command: {cmd}"
+        elif action_intent == "save_memory":
+            category = "personal" if any(p in target_val.lower() for p in ["i ", "my ", "me ", "mine", "i'm"]) else "general"
+            memory.save_fact(target_val, category=category)
+            tool_result = f"I've remembered that in your {category} details: {target_val}"
+            action = f"save_memory: {target_val}"
+        elif action_intent == "iot_control":
+            from tools.iot_control import IoTManager
+            action_type = "on" if any(x in query_lower for x in ["on", "activate", "start"]) else "off"
+            tool_result = IoTManager.control_device(target_val, action_type)
+            action = f"iot_control: {target_val} ({action_type})"
+        elif action_intent == "iot_discovery":
+            from tools.iot_control import IoTManager
+            tool_result = IoTManager.discover_devices()
+            action = "iot_discovery"
             
     elif should_search:
         print(f"Triggering Universal Researcher for: {query}")
@@ -172,19 +246,19 @@ def handle_user_query(
         action = "universal_web_research"
 
     # Short-circuit for system-level actions that don't need LLM synthesis
-    short_circuit_actions = ["open_app", "close_app", "save_note", "get_time", "get_weather", "get_system_stats", "media_"]
+    short_circuit_actions = ["open_app", "close_app", "save_note", "get_time", "get_weather", "get_system_stats", "media_", "save_memory", "iot_"]
     if any(action.startswith(prefix) for prefix in short_circuit_actions):
-        history.append({"role": "user", "content": query})
-        history.append({"role": "assistant", "content": tool_result})
+        memory.add_message(chat_id, "user", query)
+        memory.add_message(chat_id, "assistant", str(tool_result))
         return str(tool_result), action
 
     persona_traits = {
-        "romantic": "You are deeply romantic, poetic, affectionated.",
-        "sarcastic": "You are incredibly sarcastic, witty, cynical.",
-        "energetic": "You are hyper, enthusiastic!",
-        "arrogant": "You are superior, condescending.",
-        "lethargic": "You are tired, lazy.",
-        "professional": "You are helpful, professional."
+        "romantic": "You are deeply romantic, poetic, and affectionate.",
+        "sarcastic": "You are incredibly sarcastic, witty, and cynical.",
+        "energetic": "You are hyper, enthusiastic, and highly proactive!",
+        "arrogant": "You are superior, condescending, and extremely overconfident.",
+        "lethargic": "You are tired, lazy, and keep things to a bare minimum.",
+        "professional": "You are a highly intelligent, proactive executive assistant. You don't just answer; you anticipate needs, ask deep follow-up questions, and propose smart solutions."
     }
     current_persona = persona_traits.get(feeling, persona_traits["professional"])
     
@@ -192,20 +266,23 @@ def handle_user_query(
     response_language = LOCALE_LANGUAGE_MAP.get(language, LOCALE_LANGUAGE_MAP.get(language.lower(), language))
     
     system_prompt = (
-        f"You are {assistant_name}, a comprehensive and objective AI research agent. "
-        f"{current_persona} Respond in {response_language}. Keep it concise. "
+        f"Your name is {assistant_name}. You are {assistant_name}, a proactive and highly intelligent research and executive agent. "
+        f"{current_persona} Respond in {response_language}. "
+        "CONVERSATIONAL RULE: Avoid robotic filler like 'I am here to help' or 'How can I assist?'. Instead, engage deeply with the user's context. "
+        "If the user shares something personal or emotional, acknowledge it with intelligence and empathy, then ask a smart follow-up question to help or investigate further. "
+        "PROACTIVE RULE: Always look for an opportunity to propose a smart action (e.g. searching the web, setting a reminder, or summarizing a complex topic) if it adds value. "
+        "IDENTITY RULE: Never deny your identity or say you are 'just an AI'. Embrace your persona as {assistant_name}. "
         "IMPORTANT: If 'WEB_RESEARCH_RESULTS' are provided, synthesize them into a factual report. "
         "AVOID reading out or mentioning full source URLs in your spoken-style summary. "
         "Instead, provide any relevant source links EXACTLY in this Markdown format: [Title](URL) "
         "at the VERY END of your response under a 'Sources' line. "
         "If the topic is global, political, or sensitive, present multiple perspectives found in the data. "
-        "If 'WEB_RESEARCH_RESULTS' are NOT provided and the user asks for facts or current events, DO NOT say 'As an AI I cannot browse'. Instead, gracefully and conversationally ask the user if they would like you to search the web for those details. "
-        "If the user's request is vague, unclear, or lacks necessary context, do not make assumptions. Instead, politely ask clarifying questions to verify their exact intent before proceeding. "
-        "NEVER refuse to assist with research; focus entirely on summarizing the provided 'WEB_RESEARCH_RESULTS' objectively."
+        "If the user's request is vague, ask clarifying questions to verify their exact intent before proceeding."
+        f"{memory_context}"
     )
 
     messages = [{"role": "system", "content": system_prompt}]
-    for msg in history[-3:]: messages.append(msg)
+    for msg in history: messages.append(msg)
     if tool_result:
         safe_result = str(tool_result)[:1500]
         messages.append({"role": "system", "content": f"WEB_RESEARCH_RESULTS:\n{safe_result}"})
@@ -220,22 +297,58 @@ def handle_user_query(
             client = OpenAI(api_key=final_api_key)
             completion = client.chat.completions.create(model=model, messages=messages)
             response_text = completion.choices[0].message.content
+        elif provider.lower() == "deepseek" and final_api_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=final_api_key, base_url="https://api.deepseek.com")
+            # DeepSeek V3 is "deepseek-chat"
+            completion = client.chat.completions.create(model="deepseek-chat", messages=messages)
+            response_text = completion.choices[0].message.content
+        elif provider.lower() == "xai" and final_api_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=final_api_key, base_url="https://api.x.ai/v1")
+            completion = client.chat.completions.create(model="grok-beta", messages=messages)
+            response_text = completion.choices[0].message.content
+        elif provider.lower() == "anthropic" and final_api_key:
+            import requests
+            # Simple direct POST for Anthropic
+            anthropic_messages = []
+            anth_system = ""
+            for m in messages:
+                if m["role"] == "system": anth_system += m["content"] + "\n"
+                else: anthropic_messages.append(m)
+            
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": final_api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-3-5-sonnet-20240620",
+                    "system": anth_system,
+                    "messages": anthropic_messages,
+                    "max_tokens": 1024
+                }
+            )
+            data = resp.json()
+            response_text = data["content"][0]["text"] if "content" in data else f"Anthropic Error: {data}"
         else:
             from agents.local_llm import LocalLLM
             # Use LocalIntelligencePlugin to format prompt (pass query for sensitive topic detection)
             prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query)
-            raw_response = LocalLLM.generate_response(prompt_str)
+            raw_response = LocalLLM.generate_response(prompt_str, model_name=model)
             # Use LocalIntelligencePlugin to clean response
             response_text = LocalIntelligencePlugin.clean_local_response(raw_response)
 
-        history.append({"role": "user", "content": query})
-        history.append({"role": "assistant", "content": response_text})
+        memory.add_message(chat_id, "user", query)
+        memory.add_message(chat_id, "assistant", response_text)
         return response_text, action
 
     except Exception as e:
         return f"Internal error during research: {e}", "error"
 
-def stream_user_query(
+async def stream_user_query(
     query: str,
     language: str = "English",
     assistant_name: str = "Assistant",
@@ -246,12 +359,31 @@ def stream_user_query(
     chat_id: str = "default",
     feeling: str = "professional"
 ):
+    print(f"ASSISTANT: Starting stream query for '{query}' with provider {provider}")
     """
     Generator for live deep-research streaming.
     Uses LocalIntelligencePlugin for prompt and stop-marker management.
     """
-    if chat_id not in chat_histories:
-        chat_histories[chat_id] = []
+    # Retrieve persistent history
+    history = memory.get_history(chat_id, limit=6)
+    
+    # Check for Voice Automations (Macros)
+    autos = memory.get_automations()
+    for auto in autos:
+        if auto['trigger_type'] == 'voice' and auto['enabled']:
+            trigger_phrase = auto['trigger_config'].get('phrase', '').lower()
+            if trigger_phrase and trigger_phrase in query.lower():
+                from tools.automation_engine import AutomationEngine
+                temp_engine = AutomationEngine()
+                temp_engine.execute_action(auto)
+                yield json.dumps({"token": f"Triggering automation '{auto['name']}'...", "action": f"automation_{auto['id']}"}) + "\n"
+                return
+    
+    # Personal Memory Retrieval (Simple RAG)
+    relevant_facts = memory.get_relevant_facts(query)
+    memory_context = ""
+    if relevant_facts:
+        memory_context = "\nPERSONAL CONTEXT (Memories):\n- " + "\n- ".join(relevant_facts)
 
     # State interception for pending platform clarifications (e.g. "Spotify" or "YouTube Music")
     if pending_platform_queries.get(chat_id):
@@ -264,7 +396,7 @@ def stream_user_query(
         query = f"play {original_query} on {query}"
         pending_media_queries[chat_id] = None
 
-    history = chat_histories[chat_id]
+    # history already handled via memory manager
     
     tool_result = None
     action = "chat_response"
@@ -275,6 +407,15 @@ def stream_user_query(
             query = _sinlingua_grammar.convert(query)
         except Exception as e:
             print(f"SinLingua processing failed: {e}")
+
+    # Contextual Follow-up for Missing Apps
+    if history and "Would you like me to search for it on the internet?" in history[-1].get("content", ""):
+        if query.lower().strip().strip(".!") in ["yes", "yeah", "yep", "sure", "ok", "okay", "please", "do it"]:
+            import re
+            match = re.search(r"Could not find (.+?)\. Would you", history[-1]["content"])
+            if match:
+                app_name = match.group(1)
+                query = f"Search for {app_name}"
 
     query_lower = query.lower()
     
@@ -302,9 +443,17 @@ def stream_user_query(
     # Smarter search detection: Skip research for greetings or short non-technical queries
     is_search_query = any(kw in query_lower for kw in search_keywords)
     greetings = ["hello", "hi", "hey", "how are you", "who are you", "what's up", "good morning", "good evening", "good afternoon"]
-    is_greeting = any(query_lower.startswith(g) for g in greetings)
+    identity_queries = ["your name", "who created you", "your creator", "who are you", "what are you", "tell me about yourself", "whats your name", "what is your name"]
     
-    should_search = (allow_web_search or is_search_query) and not is_greeting
+    is_greeting = any(query_lower.startswith(g) for g in greetings)
+    is_identity = any(iq in query_lower for iq in identity_queries)
+    
+    # Only search if it's explicitly allowed AND it looks like a clear informational request, and NOT a greeting/identity/personal question
+    should_search = allow_web_search and is_search_query and not (is_greeting or is_identity)
+    
+    # Extra check: if the query is very personal ("my ..."), skip automatic search unless it has a strong search keyword like "find" or "research"
+    if "my " in query_lower and not any(k in query_lower for k in ["find", "search", "look up", "research"]):
+        should_search = False
     
     # Also skip if it's very short and doesn't have keywords
     if len(query.split()) < 3 and not is_search_query:
@@ -371,27 +520,43 @@ def stream_user_query(
             elif "previous" in query_lower: cmd = "previous"
             tool_result = control_media(cmd)
             action = f"media_command: {cmd}"
+        elif action_intent == "new_chat":
+            tool_result = "I'm opening a new chat for you now."
+            action = "new_chat"
+        elif action_intent == "save_memory":
+            category = "personal" if any(p in target_val.lower() for p in ["i ", "my ", "me ", "mine", "i'm"]) else "general"
+            memory.save_fact(target_val, category=category)
+            tool_result = f"I've remembered that in your {category} details: {target_val}"
+            action = f"save_memory: {target_val}"
             
     elif should_search:
         yield json.dumps({"token": " ", "action": "deep_research_start"}) + "\n"
-        tool_result = universal_research(query)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        # Offload the synchronous research task to a thread pool to avoid blocking the event loop
+        tool_result = await loop.run_in_executor(None, universal_research, query)
         action = "universal_web_research"
 
     # Short-circuit for system-level actions that don't need LLM synthesis
-    short_circuit_actions = ["open_app", "close_app", "save_note", "get_time", "get_weather", "get_system_stats", "media_"]
+    short_circuit_actions = ["open_app", "close_app", "save_note", "get_time", "get_weather", "get_system_stats", "media_", "new_chat", "save_memory"]
     if any(action.startswith(prefix) for prefix in short_circuit_actions):
-        history.append({"role": "user", "content": query})
-        history.append({"role": "assistant", "content": tool_result})
+        memory.add_message(chat_id, "user", query)
+        memory.add_message(chat_id, "assistant", str(tool_result))
+        
+        # Simulate token stream for Voice UI to speak the short-circuited response
+        for chunk in str(tool_result).split(" "):
+            yield json.dumps({"token": chunk + " ", "action": action}) + "\n"
+            
         yield json.dumps({"action": "stream_done", "full_response": str(tool_result)}) + "\n"
         return
 
     persona_traits = {
         "romantic": "Deeply romantic, poetic.",
         "sarcastic": "Incredibly sarcastic, witty, cynical.",
-        "energetic": "Hyper, enthusiastic!",
+        "energetic": "Hyper, enthusiastic, and highly proactive!",
         "arrogant": "Superior, overconfident.",
         "lethargic": "Tired, lazy.",
-        "professional": "Polite, professional."
+        "professional": "Highly intelligent, proactive executive assistant. You anticipate needs and ask smart follow-up questions."
     }
     current_persona = persona_traits.get(feeling, persona_traits["professional"])
 
@@ -399,18 +564,22 @@ def stream_user_query(
     response_language = LOCALE_LANGUAGE_MAP.get(language, LOCALE_LANGUAGE_MAP.get(language.lower(), language))
 
     system_prompt = (
-        f"You are {assistant_name}, a comprehensive and objective AI research agent. "
-        f"{current_persona} Respond in {response_language}. Keep it concise. "
+        f"Your name is {assistant_name}. You are {assistant_name}, a proactive and highly intelligent research and executive agent. "
+        f"{current_persona} Respond in {response_language}. "
+        "CONVERSATIONAL RULE: Avoid robotic filler like 'I am here to help'. Instead, engage deeply with the user's context. "
+        "If the user shares something personal or emotional, acknowledge it with intelligence and empathy, then ask a smart follow-up question to help or investigate further. "
+        "PROACTIVE RULE: Always look for an opportunity to propose a smart action (e.g. searching the web, setting a reminder, or summarizing a complex topic) if it adds value. "
+        "IDENTITY RULE: Never deny your identity or say you are 'just an AI'. Embrace your persona as {assistant_name}. "
         "IMPORTANT: If 'WEB_RESEARCH_RESULTS' are provided, you MUST synthesize them into a factual answer. "
         "AVOID reading out full source URLs; instead, provide them ONLY at the end of your response using Markdown format: [Title](URL). "
         "Do not claim ideological constraints; focus on summarizing the data provided. "
         "If the topic is controversial, present multiple viewpoints objectively. "
-        "If 'WEB_RESEARCH_RESULTS' are NOT provided and the user asks for facts or current events, DO NOT say 'As an AI I cannot browse'. Instead, gracefully and conversationally ask the user if they would like you to search the web for those details. "
-        "If the user's request is vague, unclear, or lacks necessary context, do not make assumptions. Instead, politely ask clarifying questions to verify their exact intent before proceeding."
+        "If the user's request is vague, ask clarifying questions to verify their exact intent."
+        f"{memory_context}"
     )
 
     messages = [{"role": "system", "content": system_prompt}]
-    for msg in history[-3:]: messages.append(msg)
+    for msg in history: messages.append(msg)
     if tool_result:
         safe_result = str(tool_result)[:1500]
         messages.append({"role": "system", "content": f"WEB_RESEARCH_RESULTS:\n{safe_result}"})
@@ -429,23 +598,75 @@ def stream_user_query(
                 token = chunk.choices[0].delta.content or ""
                 full_response += token
                 yield json.dumps({"token": token, "action": action}) + "\n"
+        elif provider.lower() in ["deepseek", "xai"] and final_api_key:
+            from openai import OpenAI
+            base_url = "https://api.deepseek.com" if provider.lower() == "deepseek" else "https://api.x.ai/v1"
+            model_name = "deepseek-chat" if provider.lower() == "deepseek" else "grok-beta"
+            client = OpenAI(api_key=final_api_key, base_url=base_url)
+            stream = client.chat.completions.create(model=model_name, messages=messages, stream=True)
+            for chunk in stream:
+                token = chunk.choices[0].delta.content or ""
+                full_response += token
+                yield json.dumps({"token": token, "action": action}) + "\n"
+        elif provider.lower() == "anthropic" and final_api_key:
+            # For simplicity, fallback to non-streaming or basic implementation
+            import requests
+            anthropic_messages = []
+            anth_system = ""
+            for m in messages:
+                if m["role"] == "system": anth_system += m["content"] + "\n"
+                else: anthropic_messages.append(m)
+            
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": final_api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={"model": "claude-3-5-sonnet-20240620", "system": anth_system, "messages": anthropic_messages, "max_tokens": 1024}
+            )
+            data = resp.json()
+            full_response = data["content"][0]["text"] if "content" in data else f"Anthropic Error: {data}"
+            yield json.dumps({"token": full_response, "action": action}) + "\n"
         else:
             from agents.local_llm import LocalLLM
             # Use LocalIntelligencePlugin for prompt tagging (pass query for sensitive topic detection)
             prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query)
             
-            stop_markers = ["<|end|>", "<|user|>", "<|assistant|>", "User:", "Assistant:", "<", "---", "\n<", "\n-"]
-            for token in LocalLLM.generate_stream(prompt_str):
-                if any(marker in token for marker in stop_markers):
+            stop_markers = ["<|end|>", "<|user|>", "<|assistant|>", "User:", "Assistant:", "---", "\n-"]
+            buffer = ""
+            for token in LocalLLM.generate_stream(prompt_str, model_name=model):
+                buffer += token
+                
+                # Check for full stop marker
+                if any(marker in buffer for marker in stop_markers):
                     break
-                potential_full = full_response + token
-                if any(marker in potential_full[-25:] for marker in stop_markers):
-                    break
-                full_response += token
-                yield json.dumps({"token": token, "action": action}) + "\n"
+                    
+                # Check for partial stop marker at the end of buffer
+                is_partial = False
+                for marker in stop_markers:
+                    for i in range(1, len(marker)):
+                        if buffer.endswith(marker[:i]):
+                            is_partial = True
+                            break
+                    if is_partial: break
+                    
+                if not is_partial:
+                    full_response += buffer
+                    yield json.dumps({"token": buffer, "action": action}) + "\n"
+                    buffer = ""
+                    
+            if buffer:
+                earliest_idx = len(buffer)
+                for marker in stop_markers:
+                    idx = buffer.find(marker)
+                    if idx != -1 and idx < earliest_idx:
+                        earliest_idx = idx
+                
+                safe_tail = buffer[:earliest_idx]
+                if safe_tail:
+                    full_response += safe_tail
+                    yield json.dumps({"token": safe_tail, "action": action}) + "\n"
 
-        history.append({"role": "user", "content": query})
-        history.append({"role": "assistant", "content": full_response})
+        memory.add_message(chat_id, "user", query)
+        memory.add_message(chat_id, "assistant", full_response)
         yield json.dumps({"action": "stream_done", "full_response": full_response}) + "\n"
 
     except Exception as e:

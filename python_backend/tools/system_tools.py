@@ -14,7 +14,11 @@ def open_application(app_name: str) -> str:
                 url = app_name if "://" in app_name else f"https://{app_name}"
                 subprocess.Popen(["open", url])
                 return f"Opening {url}..."
-            subprocess.Popen(["open", "-a", app_name])
+                
+            res = subprocess.run(["open", "-a", app_name], capture_output=True, text=True)
+            if res.returncode != 0:
+                return f"Could not find {app_name}. Would you like me to search for it on the internet?"
+                
             return f"Opened {app_name} on macOS."
         elif os_name == "Windows":
             if is_url:
@@ -36,27 +40,29 @@ def open_application(app_name: str) -> str:
         return f"Failed to open {app_name}. Error: {e}"
 
 def close_application(app_name: str) -> str:
-    """Closes a specific application on the local system."""
-    os_name = platform.system()
+    """Closes a specific application using cross-platform psutil logic."""
+    import psutil
     try:
-        if os_name == "Darwin":  # macOS
-            # uses AppleScript to gracefully quit
-            # Special handling for Antigravity itself or common Electron aliases
-            if "antigravity" in app_name.lower():
-                subprocess.run(["pkill", "-f", "Electron"])
-                return "Closed Antigravity application."
-            
-            script = f'tell application "{app_name}" to quit'
-            subprocess.run(["osascript", "-e", script])
-            return f"Closed {app_name} on macOS."
+        closed = False
+        for proc in psutil.process_iter(['name', 'cmdline']):
+            # Match process name or parts of the command line
+            if app_name.lower() in proc.info['name'].lower():
+                proc.terminate()
+                closed = True
+        
+        if closed:
+            return f"Successfully closed instances of {app_name}."
+        
+        # Fallback to platform commands if psutil didn't catch it
+        os_name = platform.system()
+        if os_name == "Darwin":
+            subprocess.run(["pkill", "-f", app_name])
         elif os_name == "Windows":
-            subprocess.run(["taskkill", "/F", "/IM", f"{app_name}.exe"])
-            return f"Closed {app_name} on Windows."
+            subprocess.run(["taskkill", "/F", "/IM", f"{app_name}.exe"], capture_output=True)
         elif os_name == "Linux":
-            subprocess.run(["pkill", app_name])
-            return f"Closed {app_name} on Linux."
-        else:
-            return f"Unsupported OS for closing {app_name}."
+            subprocess.run(["pkill", "-f", app_name])
+            
+        return f"Attempted to close {app_name} via system commands."
     except Exception as e:
         return f"Failed to close {app_name}. Error: {e}"
 
@@ -201,10 +207,32 @@ def _get_installed_music_apps() -> list[str]:
     return installed
 
 def control_media(command: str, track_query: str = "") -> str:
-    """Controls media playback on the system (macOS) across Music, Spotify, and YouTube Music."""
+    """Controls media playback across macOS, Windows, and Linux."""
     os_name = platform.system()
+    
+    if os_name == "Windows":
+        # Windows Media Control using virtual keys (simple play/pause/next/prev)
+        import ctypes
+        VK_MEDIA_PLAY_PAUSE = 0xB3
+        VK_MEDIA_NEXT_TRACK = 0xB1
+        VK_MEDIA_PREV_TRACK = 0xB0
+        
+        keys = {"play": VK_MEDIA_PLAY_PAUSE, "pause": VK_MEDIA_PLAY_PAUSE, "next": VK_MEDIA_NEXT_TRACK, "previous": VK_MEDIA_PREV_TRACK}
+        if command in keys:
+            ctypes.windll.user32.keybd_event(keys[command], 0, 0, 0)
+            return f"Executed {command} on Windows."
+        return "Command not supported for Windows media."
+
+    elif os_name == "Linux":
+        # Linux Media Control using playerctl (standard for DBus players)
+        try:
+            subprocess.run(["playerctl", command], check=True)
+            return f"Executed {command} on Linux via playerctl."
+        except:
+            return "Linux media control requires 'playerctl' to be installed."
+
     if os_name != "Darwin":
-        return "Media control is currently optimized for macOS."
+        return f"Media control is not fully supported on {os_name}."
     
     try:
         import urllib.parse

@@ -29,5 +29,7 @@
     "settings_plugin_lib": "ප්ලගීන පුස්තකාලය",
     "settings_installed": "ස්ථාපිත කර ඇත",
     "settings_install": "ස්ථාපනය කරන්න",
+    "settings_voice_control": "හඬ පාලනය",
+    "settings_voice_activation": "හඬ සක්‍රීය කිරීම (Wake Word)",
     "settings_save": "සුරකින්න"
 }

@@ -43,14 +43,19 @@ class IntentParser:
             "all been": "open",
             "up in": "open",
             "fire fox": "firefox",
-            "clothes": "close"
+            "clothes": "close",
+            "kruboo": "kruubu",
+            "kru bu": "kruubu"
         }
         for bad, good in stt_fixes.items():
-            if query_lower.startswith(bad + " "):
-                query_lower = good + query_lower[len(bad):]
-            if query_lower == bad:
-                query_lower = good
-            query_lower = query_lower.replace(f" {bad} ", f" {good} ")
+            query_lower = query_lower.replace(bad, good)
+            
+        # Wake word removal
+        wake_word = "kruubu"
+        if query_lower.startswith(wake_word + " "):
+            query_lower = query_lower[len(wake_word):].strip()
+        elif query_lower.startswith(wake_word):
+            query_lower = query_lower[len(wake_word):].strip()
             
         intents = cls.load_intents(language)
         

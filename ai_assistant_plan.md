@@ -9,7 +9,7 @@ This project involves building a sophisticated AI Assistant with dual frontends 
 The project provides two independent user interfaces:
 - **Flutter App:** Ideal for mobile deployment and cross-platform consistency. Features modern UI design and uses standard packages for voice/text input.
 - **Electron App:** Ideal for a dedicated desktop experience (macOS, Windows, Linux). Features a native-feeling glassmorphic chat interface and utilizes Web APIs for voice input.
-- **Communication:** Both frontends connect to the Python backend via REST APIs. The Electron app additionally routes calls through IPC for security.
+- **Communication:** Frontends connect to the Python backend via bidirectional WebSockets for real-time streaming and sync, with REST APIs used for static configurations.
 
 ### 2. Backend: Python
 The Python backend will act as the brain of the assistant, handling the heavy lifting.
@@ -20,9 +20,14 @@ The Python backend will act as the brain of the assistant, handling the heavy li
   - **App Interaction:** Use `subprocess` or `os` modules to open applications (macOS/Windows specific commands).
   - **Note Taking:** Create and manage markdown or text files for notes.
   - **Web Search:** Use an API like DuckDuckGo, SerpApi, or simply `googlesearch-python` to fetch results, then feed them to the LLM to summarize.
+  - **IoT Control:** A modular plugin system for controlling smart home devices (Hue, Tuya, Tasmota, WLED) via a "Connector Gallery" for non-technical users.
+  - **Memory Management:** SQLite-based storage for user facts (semantic search via `all-MiniLM-L6-v2`), chat history, and automation rules.
+  - **Automation Engine:** Daemon thread evaluating rules (time, battery, email, weather, stock, calendar) to trigger automated actions like app control, notifications, or voice alerts.
+  - **Local P2P Sync:** Cross-device pairing over the local network using Zeroconf discovery and secure base64 QR code payload exchange.
+  - **Security:** SQLite-backed master passcode storage for protecting configurations.
   - **LLM Integration:**
     - **Cloud:** OpenAI API, Anthropic, or Gemini APIs.
-    - **Local:** Ollama or python bindings (llama-cpp-python) to run lightweight models locally for privacy and offline usage.
+    - **Local:** Multi-model coordination using python bindings (GPT4All) to run models like Llama-3, Phi-3, and Mistral locally for privacy and offline usage, with streaming support.
 
 ## Development Phases
 
@@ -37,16 +42,25 @@ The Python backend will act as the brain of the assistant, handling the heavy li
 - Integrate an LLM (e.g., local via Ollama or cloud via API).
 - Implement dynamic routing in the backend to decide whether a query is a general text prompt or a specific command.
 
-### Phase 3: System Interactions
+### Phase 3: Advanced System Interactions
 - Implement the "Open App" functionality (e.g., `open -a "App Name"` on macOS).
-- Implement the "Take Notes" functionality (saving to a local database or files).
+- Implement the "Take Notes" and Personal RAG functionality (saving to local SQLite db with embeddings).
 - Implement "Web Search" capability.
+- Setup background Automation Engine for reactive local tasks.
+- Implement Local P2P Sync for secure cross-device connectivity.
 
 ### Phase 4: Voice Integration
 - Add audio recording in Flutter (using `record` or similar package).
 - Add audio recording in Electron via web APIs.
 - Send audio streams/files to the backend.
 - Use a speech-to-text model on the backend to transcribe.
+
+### Phase 5: Optimization & Real-Time Performance (Completed)
+- **WebSocket Integration:** Moved chat and voice streaming from HTTP to bidirectional WebSockets for reduced latency.
+- **Research Optimization:** Parallelized the web extraction engine to handle multiple sources concurrently.
+- **Memory Optimization:** Implemented smart reloading logic to ignore data writes and keep the model persistent in memory.
+- **Concurrency:** Ensured all heavy backend operations are offloaded to background threads to prevent blocking the server's main loop.
+- **IoT Connectors:** Built a vendor-agnostic "Connector Gallery" architecture for non-technical smart home integration.
 
 ## Recommended Project Structure
 ```text

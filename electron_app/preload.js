@@ -17,5 +17,8 @@ contextBridge.exposeInMainWorld('aiBackend', {
   closeSettings: () => ipcRenderer.send('close-settings-window'),
   hideOrb: () => ipcRenderer.send('hide-orb-window'),
   showOrb: () => ipcRenderer.send('show-orb-window'),
-  setOrbStatus: (status) => ipcRenderer.send('set-orb-status', status)
+  setOrbStatus: (status) => ipcRenderer.send('set-orb-status', status),
+  onVoiceTrigger: (callback) => ipcRenderer.on('trigger-voice-listen', () => callback()),
+  notifySettingsUpdated: () => ipcRenderer.send('settings-updated'),
+  onSettingsUpdated: (callback) => ipcRenderer.on('refresh-settings', () => callback())
 });

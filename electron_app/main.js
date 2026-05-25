@@ -88,10 +88,10 @@ function createTray() {
       { type: 'separator' },
       { label: 'Settings', click: () => { if (settingsWindow) settingsWindow.show(); } },
       { type: 'separator' },
-      { label: 'Quit Nexus AI', click: () => { app.quit(); } }
+      { label: 'Quit Kruboo', click: () => { app.quit(); } }
     ]);
 
-    tray.setToolTip('Nexus AI Assistant');
+    tray.setToolTip('Kruboo AI Assistant');
     tray.setContextMenu(contextMenu);
   } catch (err) {
     console.error('Failed to create Tray:', err);
@@ -129,6 +129,27 @@ app.whenReady().then(async () => {
     createSettingsWindow();
     createOrbWindow();
     createTray();
+
+    // Register Global Hotkeys
+    const { globalShortcut } = require('electron');
+    
+    // Command+Shift+Space: Toggle Main Chat Window
+    globalShortcut.register('Command+Shift+Space', () => {
+        if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+        if (mainWindow.isVisible()) {
+            mainWindow.hide();
+        } else {
+            mainWindow.show();
+            mainWindow.focus();
+        }
+    });
+
+    // Command+Shift+V: Trigger Voice Listening (Orb)
+    globalShortcut.register('Command+Shift+V', () => {
+        if (!orbWindow || orbWindow.isDestroyed()) createOrbWindow();
+        orbWindow.show();
+        orbWindow.webContents.send('trigger-voice-listen');
+    });
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -228,6 +249,9 @@ ipcMain.on('hide-orb-window', () => { if (orbWindow) orbWindow.hide(); });
 ipcMain.on('show-orb-window', () => { if (orbWindow) orbWindow.show(); });
 ipcMain.on('open-settings-window', () => { if (settingsWindow) { settingsWindow.show(); settingsWindow.focus(); } });
 ipcMain.on('close-settings-window', () => { if (settingsWindow) settingsWindow.hide(); });
+ipcMain.on('settings-updated', () => {
+    if (orbWindow && !orbWindow.isDestroyed()) orbWindow.webContents.send('refresh-settings');
+});
 
 ipcMain.on('set-orb-status', (event, status) => {
     if (!tray) return;

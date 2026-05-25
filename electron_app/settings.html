@@ -45,12 +45,19 @@
         .conn-info { display: flex; gap: 12px; align-items: center; }
         .conn-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; }
         .conn-icon.gmail { background: #EA4335; }
+        .conn-icon.calendar { background: #4285F4; }
         .conn-icon.whatsapp { background: #25D366; }
         .conn-details h4 { margin: 0; font-size: 14px; font-weight: 500; }
         .conn-details p { margin: 2px 0 0; font-size: 11px; color: #777; }
         
         .save-btn { background: white; color: black; border: none; padding: 15px; border-radius: 16px; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 10px; -webkit-app-region: no-drag; transition: opacity 0.2s; }
         .save-btn:hover { opacity: 0.9; }
+
+        .memory-item { background: rgba(255,255,255,0.04); padding: 8px 12px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; }
+        .memory-item span { flex: 1; margin-right: 10px; opacity: 0.9; }
+        .memory-item button { background: none; border: none; color: #ff4c4c; cursor: pointer; font-size: 14px; padding: 0 5px; opacity: 0.6; }
+        .memory-item button:hover { opacity: 1; }
+        .add-btn { background: var(--accent); border: none; color: white; width: 40px; border-radius: 12px; cursor: pointer; font-size: 18px; }
 
         /* Scrollbar */
         ::-webkit-scrollbar { width: 5px; }
@@ -69,10 +76,19 @@
             <button class="tab-btn" onclick="switchTab('identity')" data-i18n="tab_identity">Identity</button>
             <button class="tab-btn" onclick="switchTab('connections')" data-i18n="tab_connections">Links</button>
             <button class="tab-btn" onclick="switchTab('ai')" data-i18n="tab_ai">Engine</button>
+            <button class="tab-btn" onclick="switchTab('memory')" data-i18n="tab_memory">Memory</button>
+            <button class="tab-btn" onclick="switchTab('automations')">Automations</button>
         </nav>
 
         <!-- General Tab -->
         <div id="general" class="tab-content active">
+            <div class="section">
+                <div class="section-title" data-i18n="settings_voice_control">Voice Control</div>
+                <div style="display:flex; align-items:center; gap:12px; padding: 5px 0;">
+                    <input type="checkbox" id="voice-activation" style="width:18px; height:18px; cursor:pointer; accent-color: var(--accent);">
+                    <label for="voice-activation" style="font-size:13px; color:#f0f0f5; cursor:pointer; font-weight: 500;" data-i18n="settings_voice_activation">Voice Activation (Wake Word)</label>
+                </div>
+            </div>
             <div class="section">
                 <div class="section-title" data-i18n="settings_appearance">UI Appearance</div>
                 <div class="color-palette">
@@ -86,7 +102,7 @@
                 <div class="section-title" data-i18n="settings_persona">Assistant Persona</div>
                 <div class="control-group">
                     <label data-i18n="settings_assistant_name">Name</label>
-                    <input type="text" id="assistant-name" placeholder="Nexus AI">
+                    <input type="text" id="assistant-name" placeholder="Kruboo">
                     <label data-i18n="settings_native_lang">System Language</label>
                     <select id="lang-selection">
                         <option value="en-US">English (US)</option>
@@ -138,6 +154,17 @@
                 </div>
                 <button id="connect-gmail-btn" class="connect-btn">Connect</button>
             </div>
+
+            <div class="connection-card">
+                <div class="conn-info">
+                    <div class="conn-icon calendar">C</div>
+                    <div class="conn-details">
+                        <h4>Google Calendar</h4>
+                        <p id="calendar-status">Disconnected</p>
+                    </div>
+                </div>
+                <button id="connect-calendar-btn" class="connect-btn">Connect</button>
+            </div>
             
             <div class="section-title" style="margin-top:20px" data-i18n="settings_plugin_lib">Skill Library</div>
             <div class="plugin-item">
@@ -148,9 +175,18 @@
                 <span>📂 File Manager</span>
                 <button data-i18n="settings_installed">Active</button>
             </div>
-            <div class="plugin-item">
-                <span>🎶 Spotify Bridge</span>
-                <button style="background:rgba(255,255,255,0.1)">Install</button>
+            
+            <!-- Link New Device (WhatsApp style) -->
+            <div class="section-title" style="margin-top:20px">Device Pairing</div>
+            <div class="section" style="text-align: center; background: white; padding: 20px;">
+                <p style="color: #666; font-size: 12px; margin-bottom: 15px; font-weight: 500;">Scan this from your mobile app to link instantly</p>
+                <div id="qr-container" style="background: white; padding: 10px; border-radius: 12px; display: inline-block;">
+                    <img id="pairing-qr" style="width: 180px; height: 180px; display: none;">
+                    <div id="qr-loader" style="width: 180px; height: 180px; display: flex; align-items: center; justify-content: center; color: #444;">
+                        Generating Link...
+                    </div>
+                </div>
+                <div style="margin-top: 10px; font-size: 11px; color: #6b4cff; font-weight: 600;" id="pairing-token-text"></div>
             </div>
         </div>
 
@@ -161,12 +197,116 @@
                 <div class="control-group">
                     <label data-i18n="settings_model_sel">Model Authority</label>
                     <select id="llm-model">
-                        <option value="gpt-4">GPT-4 Turbo (Cloud)</option>
-                        <option value="llama-3">Llama 3 (Local Privacy)</option>
-                        <option value="mistral">Mistral (Local Privacy)</option>
+                        <optgroup label="── Local Models ──">
+                            <option value="llama-3" selected>Phi-3 Mini (Default Local)</option>
+                            <option value="mistral">Mistral 7B (Local)</option>
+                        </optgroup>
+                        <optgroup label="── Cloud Models ──">
+                            <option value="gpt-4">GPT-4 Turbo (OpenAI)</option>
+                            <option value="claude-3">Claude 3.5 Sonnet (Anthropic)</option>
+                            <option value="deepseek">DeepSeek V3 (High Efficiency)</option>
+                            <option value="grok">Grok 2 (X.AI)</option>
+                        </optgroup>
                     </select>
-                    <label data-i18n="settings_api_key">OpenAI API Key</label>
-                    <input type="password" id="api-key" placeholder="sk-...">
+                    <label data-i18n="settings_api_key">Provider API Key</label>
+                    <input type="password" id="api-key" placeholder="Enter API key for selected provider...">
+                </div>
+            </div>
+        </div>
+
+        <!-- Memory Tab -->
+        <div id="memory" class="tab-content">
+            <div class="section" style="background: rgba(107, 76, 255, 0.1); border-color: var(--accent); margin-bottom: 20px;">
+                <div class="control-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                    <span style="font-size: 18px;">🔍</span>
+                    <input type="text" id="memory-search" placeholder="Search memories..." style="flex: 1; background: rgba(0,0,0,0.2); border-radius: 14px;" oninput="filterMemories()">
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-title">Personal Details</div>
+                <div id="personal-list" class="memory-list">
+                    <p style="font-size: 11px; color: #666; text-align: center;">Loading memories...</p>
+                </div>
+                <div class="control-group" style="margin-top: 10px; flex-direction: row; gap: 5px;">
+                    <input type="text" id="personal-input" placeholder="Add personal detail..." style="flex: 1;">
+                    <button class="add-btn" onclick="addMemory('personal')">+</button>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">General Details</div>
+                <div id="general-list" class="memory-list">
+                </div>
+                <div class="control-group" style="margin-top: 10px; flex-direction: row; gap: 5px;">
+                    <input type="text" id="general-input" placeholder="Add general detail..." style="flex: 1;">
+                    <button class="add-btn" onclick="addMemory('general')">+</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Automations Tab -->
+        <div id="automations" class="tab-content">
+            <div class="section">
+                <div class="section-title">New Automation</div>
+                <div class="control-group">
+                    <input type="text" id="auto-name" placeholder="Rule Name (e.g. Battery Saver)">
+                    <select id="auto-trigger" onchange="toggleTriggerFields()">
+                        <option value="time">Time of Day</option>
+                        <option value="battery">Battery Level</option>
+                        <option value="email">Incoming Email</option>
+                        <option value="weather">Weather Condition</option>
+                        <option value="stock">Stock Price</option>
+                        <option value="voice">Voice Phrase</option>
+                        <option value="calendar_reminder">Calendar Reminder</option>
+                    </select>
+                    
+                    <!-- Dynamic Trigger Config -->
+                    <div id="trigger-time-fields">
+                        <input type="time" id="trigger-time">
+                    </div>
+                    <div id="trigger-battery-fields" style="display:none">
+                        <input type="number" id="trigger-battery" placeholder="Battery % threshold (e.g. 20)">
+                    </div>
+                    <div id="trigger-email-fields" style="display:none">
+                        <input type="text" id="trigger-email" placeholder="Sender email address">
+                    </div>
+                    <div id="trigger-weather-fields" style="display:none">
+                        <input type="text" id="trigger-weather" placeholder="Condition (e.g. rain, clouds, clear)">
+                    </div>
+                    <div id="trigger-stock-fields" style="display:none">
+                        <div class="control-group" style="flex-direction: row; gap: 5px;">
+                            <input type="text" id="trigger-stock-symbol" placeholder="Symbol (e.g. AAPL)" style="flex:1">
+                            <select id="trigger-stock-dir" style="width: 80px;">
+                                <option value="above">Above</option>
+                                <option value="below">Below</option>
+                            </select>
+                            <input type="number" id="trigger-stock-price" placeholder="Price" style="width: 80px;">
+                        </div>
+                    </div>
+                    <div id="trigger-voice-fields" style="display:none">
+                        <input type="text" id="trigger-voice" placeholder="Spoken phrase (e.g. initiate lockdown)">
+                    </div>
+                    <div id="trigger-calendar-fields" style="display:none">
+                        <input type="number" id="trigger-calendar-mins" placeholder="Minutes before meeting (e.g. 5)">
+                    </div>
+
+                    <select id="auto-action">
+                        <option value="open_app">Open Application</option>
+                        <option value="close_app">Close Application</option>
+                        <option value="media_control">Media Command (Pause/Next)</option>
+                        <option value="notification">Push Notification</option>
+                        <option value="voice_alert">Voice Alert (Speak)</option>
+                    </select>
+                    <input type="text" id="auto-action-val" placeholder="Target (e.g. Slack or Notification text)">
+                    
+                    <button class="save-btn" onclick="addAutomation()" style="background: var(--accent); color: white; width: 100%;">Add Rule</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Active Rules</div>
+                <div id="automations-list">
+                    <p style="font-size: 11px; color: #666; text-align: center;">No active automations.</p>
                 </div>
             </div>
         </div>
@@ -176,8 +316,8 @@
 
     <script>
         const savedSettings = JSON.parse(localStorage.getItem('nexus-settings')) || {
-            name: 'Nexus AI', lang: 'en-US', model: 'gpt-4', feeling: 'professional', 
-            apiKey: '', elevenKey: '', voiceMode: 'offline'
+            name: 'Kruboo', lang: 'en-US', model: 'llama-3', feeling: 'professional', 
+            apiKey: '', elevenKey: '', voiceMode: 'offline', voiceActivation: false
         };
 
         // UI Fill
@@ -187,6 +327,7 @@
         document.getElementById('api-key').value = savedSettings.apiKey || '';
         document.getElementById('eleven-key').value = savedSettings.elevenKey || '';
         document.getElementById('voice-mode').value = savedSettings.voiceMode || 'offline';
+        document.getElementById('voice-activation').checked = savedSettings.voiceActivation || false;
 
         // i18n Engine
         async function loadLocales(lang) {
@@ -217,9 +358,11 @@
                 model: document.getElementById('llm-model').value,
                 apiKey: document.getElementById('api-key').value,
                 elevenKey: document.getElementById('eleven-key').value,
-                voiceMode: document.getElementById('voice-mode').value
+                voiceMode: document.getElementById('voice-mode').value,
+                voiceActivation: document.getElementById('voice-activation').checked
             };
             localStorage.setItem('nexus-settings', JSON.stringify(data));
+            window.aiBackend.notifySettingsUpdated();
             window.aiBackend.closeSettings();
         };
 
@@ -245,6 +388,179 @@
                 this.innerText = "Linked"; this.disabled = true;
             }
         };
+
+        // Calendar Link
+        document.getElementById('connect-calendar-btn').onclick = async function() {
+            this.innerText = "...";
+            const res = await fetch('http://localhost:8000/auth/calendar');
+            const data = await res.json();
+            if (data.status === "success") {
+                document.getElementById('calendar-status').innerText = "Active";
+                this.innerText = "Linked"; this.disabled = true;
+            }
+        };
+
+        // Device Pairing (QR)
+        async function fetchPairingQR() {
+            try {
+                const res = await fetch('http://localhost:8000/sync/status');
+                const data = await res.json();
+                if (data.pairing_qr) {
+                    document.getElementById('pairing-qr').src = data.pairing_qr;
+                    document.getElementById('pairing-qr').style.display = 'block';
+                    document.getElementById('qr-loader').style.display = 'none';
+                    document.getElementById('pairing-token-text').innerText = "Pairing Code: " + data.pairing_token;
+                }
+            } catch (e) {
+                document.getElementById('qr-loader').innerText = "Backend Offline";
+            }
+        }
+        // Memory Management Logic
+        async function fetchMemories() {
+            try {
+                const res = await fetch('http://localhost:8000/memory/facts');
+                const data = await res.json();
+                
+                const personalList = document.getElementById('personal-list');
+                const generalList = document.getElementById('general-list');
+                
+                personalList.innerHTML = '';
+                generalList.innerHTML = '';
+                
+                data.facts.forEach(m => {
+                    const item = document.createElement('div');
+                    item.className = 'memory-item';
+                    item.innerHTML = `<span>${m.fact}</span><button onclick="deleteMemory(${m.id})">✕</button>`;
+                    
+                    if (m.category === 'personal') personalList.appendChild(item);
+                    else generalList.appendChild(item);
+                });
+                
+                if (personalList.innerHTML === '') personalList.innerHTML = '<p style="font-size: 11px; color: #444; text-align: center;">No personal details saved.</p>';
+                if (generalList.innerHTML === '') generalList.innerHTML = '<p style="font-size: 11px; color: #444; text-align: center;">No general details saved.</p>';
+                
+            } catch (e) {
+                console.error("Failed to fetch memories:", e);
+            }
+        }
+
+        async function addMemory(category) {
+            const input = document.getElementById(`${category}-input`);
+            const fact = input.value.trim();
+            if (!fact) return;
+            
+            try {
+                await fetch('http://localhost:8000/memory/facts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fact, category })
+                });
+                input.value = '';
+                fetchMemories();
+            } catch (e) { console.error("Add memory failed:", e); }
+        }
+
+        async function deleteMemory(id) {
+            try {
+                await fetch(`http://localhost:8000/memory/facts/${id}`, { method: 'DELETE' });
+                fetchMemories();
+            } catch (e) { console.error("Delete memory failed:", e); }
+        }
+
+        function filterMemories() {
+            const query = document.getElementById('memory-search').value.toLowerCase();
+            const items = document.querySelectorAll('.memory-item');
+            
+            items.forEach(item => {
+                const text = item.querySelector('span').innerText.toLowerCase();
+                if (text.includes(query)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // Automation Management
+        function toggleTriggerFields() {
+            const type = document.getElementById('auto-trigger').value;
+            document.getElementById('trigger-time-fields').style.display = type === 'time' ? 'block' : 'none';
+            document.getElementById('trigger-battery-fields').style.display = type === 'battery' ? 'block' : 'none';
+            document.getElementById('trigger-email-fields').style.display = type === 'email' ? 'block' : 'none';
+            document.getElementById('trigger-weather-fields').style.display = type === 'weather' ? 'block' : 'none';
+            document.getElementById('trigger-stock-fields').style.display = type === 'stock' ? 'block' : 'none';
+            document.getElementById('trigger-voice-fields').style.display = type === 'voice' ? 'block' : 'none';
+            document.getElementById('trigger-calendar-fields').style.display = type === 'calendar_reminder' ? 'block' : 'none';
+        }
+
+        async function fetchAutomations() {
+            try {
+                const res = await fetch('http://localhost:8000/automations');
+                const data = await res.json();
+                const list = document.getElementById('automations-list');
+                list.innerHTML = '';
+                
+                data.automations.forEach(a => {
+                    const item = document.createElement('div');
+                    item.className = 'memory-item';
+                    item.innerHTML = `
+                        <div style="display:flex; flex-direction:column">
+                            <span style="font-weight:600">${a.name}</span>
+                            <small style="font-size:10px; color:#777">${a.trigger_type} ➔ ${a.action_type}</small>
+                        </div>
+                        <button onclick="deleteAutomation(${a.id})">✕</button>
+                    `;
+                    list.appendChild(item);
+                });
+                if (data.automations.length === 0) list.innerHTML = '<p style="font-size: 11px; color: #666; text-align: center;">No active automations.</p>';
+            } catch (e) { console.error("Fetch automations failed:", e); }
+        }
+
+        async function addAutomation() {
+            const name = document.getElementById('auto-name').value;
+            const trigger_type = document.getElementById('auto-trigger').value;
+            const action_type = document.getElementById('auto-action').value;
+            const action_val = document.getElementById('auto-action-val').value;
+            
+            let trigger_config = {};
+            if (trigger_type === 'time') trigger_config = { time: document.getElementById('trigger-time').value };
+            else if (trigger_type === 'battery') trigger_config = { threshold: document.getElementById('trigger-battery').value };
+            else if (trigger_type === 'email') trigger_config = { sender: document.getElementById('trigger-email').value };
+            else if (trigger_type === 'weather') trigger_config = { condition: document.getElementById('trigger-weather').value };
+            else if (trigger_type === 'stock') trigger_config = { 
+                symbol: document.getElementById('trigger-stock-symbol').value,
+                direction: document.getElementById('trigger-stock-dir').value,
+                price: document.getElementById('trigger-stock-price').value
+            };
+            else if (trigger_type === 'voice') trigger_config = { phrase: document.getElementById('trigger-voice').value };
+            else if (trigger_type === 'calendar_reminder') trigger_config = { minutes: document.getElementById('trigger-calendar-mins').value };
+
+            let action_config = {};
+            if (action_type === 'open_app' || action_type === 'close_app') action_config = { app_name: action_val };
+            else if (action_type === 'media_control') action_config = { command: action_val };
+            else if (action_type === 'notification' || action_type === 'voice_alert') action_config = { message: action_val };
+
+            try {
+                await fetch('http://localhost:8000/automations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, trigger_type, trigger_config, action_type, action_config })
+                });
+                fetchAutomations();
+            } catch (e) { console.error("Add automation failed:", e); }
+        }
+
+        async function deleteAutomation(id) {
+            try {
+                await fetch(`http://localhost:8000/automations/${id}`, { method: 'DELETE' });
+                fetchAutomations();
+            } catch (e) { console.error("Delete automation failed:", e); }
+        }
+
+        // Initialize
+        fetchPairingQR();
+        fetchMemories();
+        fetchAutomations();
     </script>
 </body>
 </html>

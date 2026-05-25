@@ -7,10 +7,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'theme/app_theme.dart';
 import 'widgets/orb_widget.dart';
 import 'services/api_service.dart';
+import 'screens/memory_screen.dart';
+import 'screens/automation_screen.dart';
 
 void main() {
   runApp(const AssistantApp());
@@ -63,12 +67,43 @@ class _MainScreenState extends State<MainScreen> {
   bool _webSearchEnabled = true;
 
   Process? _pythonProcess;
+  StreamSubscription? _wsSubscription;
 
   @override
   void initState() {
     super.initState();
     _startPythonBackend();
     _initTts();
+    _initWebSocket();
+  }
+
+  void _initWebSocket() {
+    _wsSubscription?.cancel();
+    _wsSubscription = _apiService.getWebSocketStream().listen((data) {
+      try {
+        final event = json.decode(data);
+        if (event['type'] == 'message') {
+          final role = event['role'];
+          final content = event['content'];
+          
+          // Simple duplicate check: avoid adding if it's the same as the last message
+          if (_messages.isNotEmpty && _messages.last['content'] == content) {
+             return;
+          }
+
+          setState(() {
+            _messages.add({"role": role, "content": content});
+            if (role == 'user') _showChat = true;
+          });
+        }
+      } catch (e) {
+        debugPrint("WS Error: $e");
+      }
+    }, onError: (err) {
+      debugPrint("WS Connection Error: $err");
+      // Retry after 5 seconds
+      Future.delayed(const Duration(seconds: 5), _initWebSocket);
+    });
   }
 
   void _initTts() async {
@@ -107,6 +142,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void dispose() {
     _pythonProcess?.kill();
+    _wsSubscription?.cancel();
     _controller.dispose();
     _recorder.dispose();
     _audioPlayer.dispose();
@@ -226,6 +262,7 @@ class _MainScreenState extends State<MainScreen> {
         initialProvider: _llmProvider,
         initialModel: _llmModel,
         initialKey: _apiKey,
+        apiService: _apiService, // Pass apiService to handle linking
         onSave: (name, lang, provider, model, key) {
           setState(() {
             _assistantName = name;
@@ -558,6 +595,7 @@ class _SettingsDialog extends StatefulWidget {
   final String initialProvider;
   final String initialModel;
   final String initialKey;
+  final ApiService apiService;
   final Function(String, String, String, String, String) onSave;
 
   const _SettingsDialog({
@@ -567,6 +605,7 @@ class _SettingsDialog extends StatefulWidget {
     required this.initialProvider,
     required this.initialModel,
     required this.initialKey,
+    required this.apiService,
     required this.onSave,
   }) : super(key: key);
 
@@ -602,6 +641,24 @@ class __SettingsDialogState extends State<_SettingsDialog> {
             _buildField("Model Name", _model, (val) => _model = val),
             if (_provider == "openai")
               _buildField("API Key", _key, (val) => _key = val, obscure: true),
+            const Divider(height: 20),
+            _buildSettingsLink("MANAGE MEMORY", Icons.psychology_outlined, () {
+              Navigator.push(context, MaterialPageRoute(builder: (c) => MemoryScreen(apiService: widget.apiService)));
+            }),
+            _buildSettingsLink("DYNAMIC AUTOMATIONS", Icons.auto_fix_high_outlined, () {
+              Navigator.push(context, MaterialPageRoute(builder: (c) => AutomationScreen(apiService: widget.apiService)));
+            }),
+            const Divider(height: 30),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF25D366), // WhatsApp Green
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 45),
+              ),
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text("LINK NEW DEVICE (P2P)"),
+              onPressed: () => _openScanner(context),
+            )
           ],
         ),
       ),
@@ -615,6 +672,15 @@ class __SettingsDialogState extends State<_SettingsDialog> {
           child: const Text("Save"),
         ),
       ],
+    );
+  }
+
+  Widget _buildSettingsLink(String label, IconData icon, VoidCallback onTap) {
+    return ListTile(
+      leading: Icon(icon, color: AppTheme.accent, size: 20),
+      title: Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1)),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 12),
+      onTap: onTap,
     );
   }
 
@@ -638,6 +704,59 @@ class __SettingsDialogState extends State<_SettingsDialog> {
         decoration: InputDecoration(labelText: label),
         items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
+      ),
+    );
+  }
+
+  void _openScanner(BuildContext context) async {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => _ScannerScreen(
+          onScan: (data) async {
+            try {
+              final Map<String, dynamic> pairing = json.decode(data);
+              await widget.apiService.updateConnection(
+                pairing['ip'], 
+                pairing['port'], 
+                pairing['token']
+              );
+              _initWebSocket(); // Refresh WS connection with new token/IP
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Device Linked Successfully!"), backgroundColor: Colors.green),
+                );
+                Navigator.pop(context);
+              }
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Invalid QR Code"), backgroundColor: Colors.red),
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ScannerScreen extends StatelessWidget {
+  final Function(String) onScan;
+  const _ScannerScreen({Key? key, required this.onScan}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Scan Pairing QR")),
+      body: MobileScanner(
+        onDetect: (capture) {
+          final List<Barcode> barcodes = capture.barcodes;
+          for (final barcode in barcodes) {
+            if (barcode.rawValue != null) {
+              onScan(barcode.rawValue!);
+              break;
+            }
+          }
+        },
       ),
     );
   }

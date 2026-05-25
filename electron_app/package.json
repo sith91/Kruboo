@@ -4,7 +4,9 @@
   "description": "Desktop AI Assistant using Electron and Python backend",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder",
+    "pack": "electron-builder --dir"
   },
   "keywords": [],
   "author": "",
