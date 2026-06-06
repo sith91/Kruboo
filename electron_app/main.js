@@ -1,10 +1,67 @@
 const { app, BrowserWindow, ipcMain, screen, Menu, systemPreferences, Tray, nativeImage } = require('electron');
 const path = require('path');
+const { spawn } = require('child_process');
 
 let mainWindow;
 let orbWindow;
 let settingsWindow;
 let tray = null;
+let backendProcess = null;
+
+// ── Backend Auto-Launch ────────────────────────────────────────────────────
+function startBackend() {
+  // In packaged app: use the bundled PyInstaller binary from extraResources
+  // In dev mode: use start_backend.sh
+  const isPackaged = app.isPackaged;
+
+  let backendExe, backendArgs, backendCwd;
+
+  if (isPackaged) {
+    // Bundled binary lives at Contents/Resources/kruboo_backend/kruboo_backend
+    const resourcesPath = process.resourcesPath;
+    backendExe = path.join(resourcesPath, 'kruboo_backend', 'kruboo_backend');
+    backendArgs = [];
+    backendCwd = path.join(resourcesPath, 'kruboo_backend');
+  } else {
+    // Dev mode: run via shell script with venv
+    backendExe = '/bin/bash';
+    backendArgs = [path.join(__dirname, '..', 'start_backend.sh')];
+    backendCwd = path.join(__dirname, '..');
+  }
+
+  console.log(`[Backend] Starting: ${backendExe}`);
+
+  backendProcess = spawn(backendExe, backendArgs, {
+    cwd: backendCwd,
+    env: {
+      ...process.env,
+      LLAMA_NO_METAL: '1',
+      GGML_NO_METAL: '1',
+      GGML_METAL_PATH_RESOURCES: '',
+      GPT4ALL_BACKEND: 'cpu',
+      PORT: '8000',
+    },
+    detached: false,
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  backendProcess.stdout.on('data', (d) => console.log('[Backend]', d.toString().trim()));
+  backendProcess.stderr.on('data', (d) => console.warn('[Backend ERR]', d.toString().trim()));
+
+  backendProcess.on('exit', (code) => {
+    console.warn(`[Backend] Exited with code ${code}. Restarting in 3s...`);
+    if (!app.isQuitting) setTimeout(startBackend, 3000);
+  });
+}
+
+app.isQuitting = false;
+app.on('before-quit', () => {
+  app.isQuitting = true;
+  if (backendProcess) {
+    backendProcess.kill('SIGTERM');
+    backendProcess = null;
+  }
+});
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
@@ -99,6 +156,9 @@ function createTray() {
 }
 
 app.whenReady().then(async () => {
+    // Start the Python backend first (auto-restarts on crash)
+    startBackend();
+
     if (process.platform === 'darwin') {
       try {
         const status = systemPreferences.getMediaAccessStatus('microphone');

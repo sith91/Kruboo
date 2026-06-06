@@ -40,10 +40,17 @@ class IntentParser:
         
         # STT Correction Layer (Handles Vosk mis-transcriptions for common English commands)
         stt_fixes = {
+            "not all all barnum of": "open",
+            "all all barnum of": "open",
+            "all all barnum": "open",
             "all been": "open",
             "up in": "open",
+            "oh but": "open",
             "fire fox": "firefox",
             "clothes": "close",
+            "unbowed set up": "whatsapp",
+            "and about to setup": "whatsapp",
+            "what's up": "whatsapp",
             "kruboo": "kruubu",
             "kru bu": "kruubu"
         }

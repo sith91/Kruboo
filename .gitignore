@@ -45,3 +45,8 @@ flutter_app/pubspec.lock
 # Local databases and runtime configs
 *.db
 python_backend/.sync_config.json
+
+# PyInstaller build artifacts & Electron copied resources
+python_backend/build/
+python_backend/dist/
+electron_app/resources/

@@ -1,7 +1,7 @@
 {
-  "name": "ai-assistant-electron",
+  "name": "kruboo-ai-assistant",
   "version": "1.0.0",
-  "description": "Desktop AI Assistant using Electron and Python backend",
+  "description": "Kruboo — Your personal AI Assistant for macOS",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -9,24 +9,56 @@
     "pack": "electron-builder --dir"
   },
   "keywords": [],
-  "author": "",
+  "author": "Kruboo",
   "license": "ISC",
   "devDependencies": {
     "electron": "^29.1.0",
     "electron-builder": "^26.8.1"
   },
   "build": {
-    "appId": "com.nexus.ai.assistant",
+    "appId": "com.kruboo.ai.assistant",
+    "productName": "Kruboo",
+    "files": [
+      "**/*",
+      "!resources/",
+      "!node_modules/.cache"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/kruboo_backend",
+        "to": "kruboo_backend",
+        "filter": ["**/*"]
+      }
+    ],
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Nexus AI needs microphone access to listen for your voice commands."
+        "NSMicrophoneUsageDescription": "Kruboo needs microphone access to listen for your voice commands.",
+        "NSAppleEventsUsageDescription": "Kruboo uses Apple Events to control media playback."
       },
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "Kruboo AI Assistant",
+      "background": "assets/dmg-background.png",
+      "icon": "assets/icon.icns",
+      "iconSize": 100,
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ],
+      "window": { "width": 540, "height": 380 }
     }
   },
   "dependencies": {
     "jimp": "^0.22.12"
   }
 }
+

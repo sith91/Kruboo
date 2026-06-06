@@ -8,7 +8,6 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'theme/app_theme.dart';
 import 'widgets/orb_widget.dart';
@@ -26,7 +25,7 @@ class AssistantApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Nexus AI',
+      title: 'Kruuboo',
       theme: AppTheme.darkTheme,
       home: const MainScreen(),
       debugShowCheckedModeBanner: false,
@@ -59,11 +58,12 @@ class _MainScreenState extends State<MainScreen> {
   final FlutterTts _flutterTts = FlutterTts();
   
   // Configuration
-  String _assistantName = "Nexus AI";
+  String _assistantName = "Kruuboo";
   String _language = "English";
   String _llmProvider = "openai";
   String _llmModel = "gpt-4";
   String _apiKey = "";
+  String _sttProvider = "local";
   bool _webSearchEnabled = true;
 
   Process? _pythonProcess;
@@ -179,7 +179,7 @@ class _MainScreenState extends State<MainScreen> {
 
     if (path != null) {
       final file = File(path);
-      final transcription = await _apiService.transcribeAudio(file, _language, _apiKey);
+      final transcription = await _apiService.transcribeAudio(file, _language, _sttProvider == 'whisper' ? _apiKey : null);
       
       if (transcription != null && transcription.isNotEmpty) {
         _sendMessage(transcription, isVoice: true);
@@ -262,14 +262,17 @@ class _MainScreenState extends State<MainScreen> {
         initialProvider: _llmProvider,
         initialModel: _llmModel,
         initialKey: _apiKey,
+        initialSttProvider: _sttProvider,
         apiService: _apiService, // Pass apiService to handle linking
-        onSave: (name, lang, provider, model, key) {
+        onLinkDevice: _initWebSocket,
+        onSave: (name, lang, provider, model, key, sttProvider) {
           setState(() {
             _assistantName = name;
             _language = lang;
             _llmProvider = provider;
             _llmModel = model;
             _apiKey = key;
+            _sttProvider = sttProvider;
           });
           _updateTtsLanguage();
         },
@@ -437,7 +440,7 @@ class _MainScreenState extends State<MainScreen> {
           const SizedBox(height: 50),
           Text(
             _orbState == OrbState.listening ? "LISTENING..." : 
-            _orbState == OrbState.thinking ? "THINKING..." : "NEXUS",
+            _orbState == OrbState.thinking ? "THINKING..." : "KRUUBOO",
             style: GoogleFonts.inter(
               letterSpacing: 4,
               fontSize: 12,
@@ -595,8 +598,10 @@ class _SettingsDialog extends StatefulWidget {
   final String initialProvider;
   final String initialModel;
   final String initialKey;
+  final String initialSttProvider;
   final ApiService apiService;
-  final Function(String, String, String, String, String) onSave;
+  final VoidCallback onLinkDevice;
+  final Function(String, String, String, String, String, String) onSave;
 
   const _SettingsDialog({
     Key? key,
@@ -605,7 +610,9 @@ class _SettingsDialog extends StatefulWidget {
     required this.initialProvider,
     required this.initialModel,
     required this.initialKey,
+    required this.initialSttProvider,
     required this.apiService,
+    required this.onLinkDevice,
     required this.onSave,
   }) : super(key: key);
 
@@ -614,7 +621,7 @@ class _SettingsDialog extends StatefulWidget {
 }
 
 class __SettingsDialogState extends State<_SettingsDialog> {
-  late String _name, _lang, _provider, _model, _key;
+  late String _name, _lang, _provider, _model, _key, _sttProvider;
 
   @override
   void initState() {
@@ -624,6 +631,7 @@ class __SettingsDialogState extends State<_SettingsDialog> {
     _provider = widget.initialProvider;
     _model = widget.initialModel;
     _key = widget.initialKey;
+    _sttProvider = widget.initialSttProvider;
   }
 
   @override
@@ -638,6 +646,7 @@ class __SettingsDialogState extends State<_SettingsDialog> {
             _buildField("Assistant Name", _name, (val) => _name = val),
             _buildDropdown("Language", _lang, ["English", "Sinhala", "Tamil"], (val) => setState(() => _lang = val!)),
             _buildDropdown("LLM Provider", _provider, ["openai", "local"], (val) => setState(() => _provider = val!)),
+            _buildDropdown("STT Provider", _sttProvider, ["local", "whisper"], (val) => setState(() => _sttProvider = val!)),
             _buildField("Model Name", _model, (val) => _model = val),
             if (_provider == "openai")
               _buildField("API Key", _key, (val) => _key = val, obscure: true),
@@ -666,7 +675,7 @@ class __SettingsDialogState extends State<_SettingsDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
         ElevatedButton(
           onPressed: () {
-            widget.onSave(_name, _lang, _provider, _model, _key);
+            widget.onSave(_name, _lang, _provider, _model, _key, _sttProvider);
             Navigator.pop(context);
           },
           child: const Text("Save"),
@@ -720,7 +729,7 @@ class __SettingsDialogState extends State<_SettingsDialog> {
                 pairing['port'], 
                 pairing['token']
               );
-              _initWebSocket(); // Refresh WS connection with new token/IP
+              widget.onLinkDevice(); // Refresh WS connection with new token/IP
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Device Linked Successfully!"), backgroundColor: Colors.green),

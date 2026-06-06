@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:8000 https://*.googleapis.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:8000 ws://127.0.0.1:8000 https://*.googleapis.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <style>
@@ -37,16 +37,52 @@
             border-radius: 50%;
             cursor: pointer;
             position: relative;
-            background: radial-gradient(circle at 32% 28%, #c4b5fd, #7c3aed 55%, #4c1d95);
+            background: radial-gradient(circle at 30% 30%, #00f2fe, #4facfe 35%, #ff0844 70%, #9b51e0 100%);
             box-shadow:
                 0 0 0 1px rgba(255,255,255,0.15) inset,
-                0 0 45px rgba(124, 58, 237, 0.65),
-                0 0 90px rgba(109, 40, 217, 0.28),
+                0 0 35px rgba(0, 242, 254, 0.65),
+                0 0 75px rgba(255, 8, 68, 0.35),
                 0 16px 40px rgba(0,0,0,0.55);
             border: 1px solid rgba(255,255,255,0.2);
             transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s;
+            animation: siri-swirl 8s infinite ease-in-out;
             z-index: 10;
             -webkit-app-region: no-drag;
+        }
+
+        @keyframes siri-swirl {
+            0% {
+                background: radial-gradient(circle at 30% 30%, #00f2fe, #4facfe 35%, #ff0844 70%, #9b51e0 100%);
+                box-shadow:
+                    0 0 0 1px rgba(255,255,255,0.15) inset,
+                    0 0 35px rgba(0, 242, 254, 0.65),
+                    0 0 75px rgba(255, 8, 68, 0.35),
+                    0 16px 40px rgba(0,0,0,0.55);
+            }
+            33% {
+                background: radial-gradient(circle at 70% 30%, #ff0844, #9b51e0 35%, #00f2fe 70%, #4facfe 100%);
+                box-shadow:
+                    0 0 0 1px rgba(255,255,255,0.15) inset,
+                    0 0 35px rgba(255, 8, 68, 0.65),
+                    0 0 75px rgba(155, 81, 224, 0.35),
+                    0 16px 40px rgba(0,0,0,0.55);
+            }
+            66% {
+                background: radial-gradient(circle at 50% 80%, #9b51e0, #00f2fe 35%, #4facfe 70%, #ff0844 100%);
+                box-shadow:
+                    0 0 0 1px rgba(255,255,255,0.15) inset,
+                    0 0 35px rgba(155, 81, 224, 0.65),
+                    0 0 75px rgba(0, 242, 254, 0.35),
+                    0 16px 40px rgba(0,0,0,0.55);
+            }
+            100% {
+                background: radial-gradient(circle at 30% 30%, #00f2fe, #4facfe 35%, #ff0844 70%, #9b51e0 100%);
+                box-shadow:
+                    0 0 0 1px rgba(255,255,255,0.15) inset,
+                    0 0 35px rgba(0, 242, 254, 0.65),
+                    0 0 75px rgba(255, 8, 68, 0.35),
+                    0 16px 40px rgba(0,0,0,0.55);
+            }
         }
 
         /* Glossy sheen */
@@ -83,9 +119,9 @@
             animation: aura-expand 2s infinite ease-out;
             opacity: 1;
         }
-        .listening .aura:nth-child(1) { animation-delay: 0s;    border-color: rgba(139, 92, 246, 0.5); }
-        .listening .aura:nth-child(2) { animation-delay: 0.65s; border-color: rgba(99, 102, 241, 0.35); }
-        .listening .aura:nth-child(3) { animation-delay: 1.3s;  border-color: rgba(167, 139, 250, 0.2); }
+        .listening .aura:nth-child(1) { animation-delay: 0s;    border-color: rgba(255, 0, 127, 0.5); }
+        .listening .aura:nth-child(2) { animation-delay: 0.65s; border-color: rgba(0, 242, 254, 0.35); }
+        .listening .aura:nth-child(3) { animation-delay: 1.3s;  border-color: rgba(155, 81, 224, 0.2); }
 
         @keyframes aura-expand {
             0%   { transform: scale(0.95); opacity: 0.85; }
@@ -140,17 +176,36 @@
 
         /* ── Listening State ── */
         .listening .main-orb {
-            animation: listen-pulse 1.4s infinite alternate ease-in-out;
-            background: radial-gradient(circle at 32% 28%, #fda4af, #f43f5e 55%, #9f1239);
-            box-shadow:
-                0 0 0 1px rgba(255,255,255,0.15) inset,
-                0 0 55px rgba(244, 63, 94, 0.8),
-                0 0 100px rgba(244, 63, 94, 0.32),
-                0 20px 45px rgba(0,0,0,0.55);
+            animation: siri-listen-swirl 1.2s infinite ease-in-out;
         }
-        @keyframes listen-pulse {
-            0%   { transform: scale(1.08); }
-            100% { transform: scale(1.22); }
+        @keyframes siri-listen-swirl {
+            0% {
+                transform: scale(1.1);
+                background: radial-gradient(circle at 20% 20%, #ff007f, #7f00ff 40%, #00f2fe 80%);
+                box-shadow:
+                    0 0 0 1px rgba(255,255,255,0.2) inset,
+                    0 0 50px rgba(255, 0, 127, 0.85),
+                    0 0 90px rgba(127, 0, 255, 0.45),
+                    0 16px 40px rgba(0,0,0,0.6);
+            }
+            50% {
+                transform: scale(1.22);
+                background: radial-gradient(circle at 80% 80%, #00f2fe, #ff007f 40%, #7f00ff 80%);
+                box-shadow:
+                    0 0 0 1px rgba(255,255,255,0.25) inset,
+                    0 0 65px rgba(0, 242, 254, 0.95),
+                    0 0 110px rgba(255, 0, 127, 0.55),
+                    0 16px 40px rgba(0,0,0,0.6);
+            }
+            100% {
+                transform: scale(1.1);
+                background: radial-gradient(circle at 20% 20%, #ff007f, #7f00ff 40%, #00f2fe 80%);
+                box-shadow:
+                    0 0 0 1px rgba(255,255,255,0.2) inset,
+                    0 0 50px rgba(255, 0, 127, 0.85),
+                    0 0 90px rgba(127, 0, 255, 0.45),
+                    0 16px 40px rgba(0,0,0,0.6);
+            }
         }
 
         /* ── Context Menu (macOS popover) ── */
@@ -282,7 +337,7 @@
             </div>
         </div>
     </div>
-    <div class="orb-status" id="orb-status">SIRI</div>
+    <div class="orb-status" id="orb-status">KRUUBOO</div>
     <div class="suggestion-card" id="suggestion-card"></div>
     
     <script>
@@ -372,10 +427,12 @@
             if (isListening || isAgentSpeaking) return;
             if (wakeWordRecognizer) { try { wakeWordRecognizer.stop(); } catch(e){} wakeWordRecognizer = null; }
             const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
-            if (settings.lang && settings.lang !== 'en-US' && !window.forceBackendSTT) {
-                console.log("Using Web STT for language: " + settings.lang);
+            const engine = settings.sttEngine || 'local';
+            if (engine === 'browser') {
+                console.log("Using Web STT (Browser Native)");
                 startBrowserSTT();
             } else {
+                console.log("Using Backend STT (Engine: " + engine + ")");
                 startBackendSTT();
             }
         }
@@ -451,6 +508,8 @@
         let source = null;
         let audioContext = null;
         let wakeWordRecognizer = null;
+        let wakeWordErrorCount = 0;
+        let lastWakeWordStartTime = 0;
 
         function startWakeWordDetection() {
             if (wakeWordRecognizer || isListening || isAgentSpeaking) return;
@@ -459,8 +518,14 @@
                 console.log("Wake Word is disabled in settings.");
                 return;
             }
+            if (wakeWordErrorCount >= 3) {
+                console.warn("Wake Word detection suspended due to repeated microphone or permission errors.");
+                statusText.innerText = "MIC ACCESS ERROR";
+                statusText.style.opacity = "0.7";
+                return;
+            }
             
-            const assistantName = settings.name || "Kruboo";
+            const assistantName = settings.name || "Kruuboo";
             console.log("Wake Word detection active for: " + assistantName);
             statusText.innerText = "Listening for '" + assistantName + "'";
             statusText.style.opacity = "0.5";
@@ -475,7 +540,12 @@
             wakeWordRecognizer.interimResults = true;
             wakeWordRecognizer.lang = settings.lang || 'en-US';
             
+            wakeWordRecognizer.onstart = () => {
+                lastWakeWordStartTime = Date.now();
+            };
+            
             wakeWordRecognizer.onresult = (event) => {
+                wakeWordErrorCount = 0; // Reset on successful input
                 const s = JSON.parse(localStorage.getItem('nexus-settings')) || {};
                 const name = (s.name || "Kruboo").toLowerCase();
                 for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -498,14 +568,29 @@
             };
             wakeWordRecognizer.onerror = (err) => {
                 console.warn("Wake Word recognizer error:", err.error);
+                if (err.error === 'not-allowed' || err.error === 'service-not-allowed' || err.error === 'audio-capture') {
+                    wakeWordErrorCount++;
+                }
             };
             wakeWordRecognizer.onend = () => {
                 wakeWordRecognizer = null;
+                // If it ran for less than 3 seconds before ending, it is flapping/restarting too fast.
+                // Apply a 5-second cooldown delay to prevent the OS mic indicator from blinking.
+                let delay = 500;
+                if (Date.now() - lastWakeWordStartTime < 3000) {
+                    delay = 5000;
+                }
+                if (wakeWordErrorCount > 0) {
+                    delay = Math.max(delay, 8000);
+                }
                 setTimeout(() => {
                     if (!isListening && !isAgentSpeaking) startWakeWordDetection();
-                }, 500);
+                }, delay);
             };
-            try { wakeWordRecognizer.start(); } catch(e) {}
+            try { 
+                lastWakeWordStartTime = Date.now();
+                wakeWordRecognizer.start(); 
+            } catch(e) {}
         }
 
         async function startBackendSTT() {
@@ -594,7 +679,7 @@
                 const formData = new FormData();
                 formData.append('file', wavBlob, 'voice.wav');
                 formData.append('language', settings.lang || 'en-US');
-                if (settings.apiKey) {
+                if (settings.sttEngine === 'whisper' && settings.apiKey) {
                     formData.append('api_key', settings.apiKey);
                 }
 
@@ -657,9 +742,10 @@
         });
         
         let ws;
+        let activeWSHandler = null; // Track active handler to prevent duplicate listeners
         function setupWebSocket() {
             const token = "localhost";
-            ws = new WebSocket(`ws://localhost:8000/ws/${token}`);
+            ws = new WebSocket(`ws://127.0.0.1:8000/ws/${token}`);
             ws.onclose = () => setTimeout(setupWebSocket, 3000);
             ws.onerror = (e) => console.error("Orb WS Error:", e);
         }
@@ -688,12 +774,12 @@
                             query: query,
                             is_voice: true,
                             chat_id: "voice",
-                            assistant_name: settings.name || "Kruboo",
+                            assistant_name: settings.name || "Kruuboo",
                             llm_provider: provider,
                             llm_model: selectedModel,
                             api_key: settings.apiKey || "",
                             language: settings.lang || "en-US",
-                            feeling: settings.feeling || "professional"
+                            feeling: settings.feeling || "siri"
                         }
                     }));
 
@@ -719,6 +805,7 @@
                             }
                         } else if (data.type === "chat_done") {
                             ws.removeEventListener('message', handleWSMessage);
+                            activeWSHandler = null;
                             
                             if (sentenceBuffer.trim().length > 0) speakText(sentenceBuffer);
 
@@ -747,6 +834,9 @@
                             }, 8000);
                         }
                     };
+                    // Remove any stale handler before adding a new one (prevents duplicate responses)
+                    if (activeWSHandler) ws.removeEventListener('message', activeWSHandler);
+                    activeWSHandler = handleWSMessage;
                     ws.addEventListener('message', handleWSMessage);
                 } else {
                     setupWebSocket();
@@ -845,7 +935,8 @@
 
             window.aiBackend.onSettingsUpdated(() => {
                 console.log("Settings updated, refreshing Wake Word status...");
-                if (wakeWordRecognizer) { try { wakeWordRecognizer.stop(); } catch(e){} wakeWordRecognizer = null; }
+                wakeWordErrorCount = 0; // Reset error counts on settings save
+                if (wakeWordRecognizer) { try { try { wakeWordRecognizer.stop(); } catch(e){} } catch(e){} wakeWordRecognizer = null; }
                 startWakeWordDetection();
             });
         });

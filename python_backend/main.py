@@ -441,12 +441,13 @@ async def process_tts(request: dict):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
+if __name__ == "__main__":
+    should_reload = os.getenv("DEV_MODE", "false").lower() == "true"
     uvicorn.run(
         "main:app", 
         host="0.0.0.0", 
         port=8000, 
-        reload=True, 
+        reload=should_reload, 
         reload_dirs=["."], 
         reload_excludes=[
             "voices/*", 

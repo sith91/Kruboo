@@ -27,23 +27,31 @@ class LocalIntelligencePlugin:
     @staticmethod
     def clean_local_response(raw):
         c = raw
-        for m in ["User:", "Assistant:"]:
+        for m in ["User:", "Assistant:", "<|user|>", "<|assistant|>", "<|end|>", "<|system|>"]:
             c = c.split(m)[0]
-        c = c.split(chr(60))[0]
         return c.strip()
 
     @staticmethod
     def format_phi3_prompt(system_prompt, messages, query=""):
-        eff = LocalIntelligencePlugin.build_system_prompt(system_prompt, query)
-        p = SYS_OPEN + chr(10) + eff + SYS_CLOSE
-        start = 1 if messages and messages[0]["role"]=="system" else 0
-        for m in messages[start:]:
-            role, content = m["role"], m["content"]
-            if role == "system":
-                p += chr(10) + USR_OPEN + chr(10) + "[SOURCE_MATERIAL]" + chr(10) + content + SYS_CLOSE
-            elif role == "user":
-                rf = LocalIntelligencePlugin.reframe_query(content) if query==content else content
-                p += chr(10) + USR_OPEN + chr(10) + rf + SYS_CLOSE
-            else:
-                p += chr(10) + AST_OPEN + chr(10) + content + SYS_CLOSE
-        return p + chr(10) + AST_OPEN
+        """
+        Build a SHORT prompt that fits within a 512-token CPU context.
+        Only include: a brief system role line + the most recent user message.
+        Skips history and web research to leave room for the model response.
+        """
+        # Short system line (max ~50 tokens)
+        role_line = "You are a helpful AI assistant. Be concise and direct."
+
+        # Find the actual user query (last user message in messages list)
+        user_query = query
+        for m in reversed(messages):
+            if m["role"] == "user":
+                user_query = m["content"]
+                break
+
+        # Phi-3 chat format
+        prompt = (
+            SYS_OPEN + "\n" + role_line + SYS_CLOSE + "\n"
+            + USR_OPEN + "\n" + user_query + SYS_CLOSE + "\n"
+            + AST_OPEN + "\n"
+        )
+        return prompt

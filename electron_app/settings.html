@@ -102,7 +102,7 @@
                 <div class="section-title" data-i18n="settings_persona">Assistant Persona</div>
                 <div class="control-group">
                     <label data-i18n="settings_assistant_name">Name</label>
-                    <input type="text" id="assistant-name" placeholder="Kruboo">
+                    <input type="text" id="assistant-name" placeholder="Kruuboo">
                     <label data-i18n="settings_native_lang">System Language</label>
                     <select id="lang-selection">
                         <option value="en-US">English (US)</option>
@@ -212,6 +212,17 @@
                     <input type="password" id="api-key" placeholder="Enter API key for selected provider...">
                 </div>
             </div>
+            <div class="section" style="margin-top:20px">
+                <div class="section-title">Speech-to-Text (STT)</div>
+                <div class="control-group">
+                    <label>STT Engine</label>
+                    <select id="stt-engine">
+                        <option value="local">Vosk (Local - Offline)</option>
+                        <option value="whisper">OpenAI Whisper (Cloud - Requires API Key)</option>
+                        <option value="browser">Web Speech API (Browser Native - Free)</option>
+                    </select>
+                </div>
+            </div>
         </div>
 
         <!-- Memory Tab -->
@@ -316,8 +327,9 @@
 
     <script>
         const savedSettings = JSON.parse(localStorage.getItem('nexus-settings')) || {
-            name: 'Kruboo', lang: 'en-US', model: 'llama-3', feeling: 'professional', 
-            apiKey: '', elevenKey: '', voiceMode: 'offline', voiceActivation: false
+            name: 'Kruuboo', lang: 'en-US', model: 'llama-3', feeling: 'siri', 
+            apiKey: '', elevenKey: '', voiceMode: 'offline', voiceActivation: false,
+            sttEngine: 'local'
         };
 
         // UI Fill
@@ -328,6 +340,7 @@
         document.getElementById('eleven-key').value = savedSettings.elevenKey || '';
         document.getElementById('voice-mode').value = savedSettings.voiceMode || 'offline';
         document.getElementById('voice-activation').checked = savedSettings.voiceActivation || false;
+        document.getElementById('stt-engine').value = savedSettings.sttEngine || 'local';
 
         // i18n Engine
         async function loadLocales(lang) {
@@ -359,7 +372,8 @@
                 apiKey: document.getElementById('api-key').value,
                 elevenKey: document.getElementById('eleven-key').value,
                 voiceMode: document.getElementById('voice-mode').value,
-                voiceActivation: document.getElementById('voice-activation').checked
+                voiceActivation: document.getElementById('voice-activation').checked,
+                sttEngine: document.getElementById('stt-engine').value
             };
             localStorage.setItem('nexus-settings', JSON.stringify(data));
             window.aiBackend.notifySettingsUpdated();

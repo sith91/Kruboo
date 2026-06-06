@@ -2,38 +2,86 @@ import os
 import subprocess
 import platform
 
+# Popular web services that should open in browser, not as local apps
+WEB_SERVICES = {
+    "facebook": "https://www.facebook.com",
+    "instagram": "https://www.instagram.com",
+    "twitter": "https://www.twitter.com",
+    "x": "https://www.x.com",
+    "youtube": "https://www.youtube.com",
+    "gmail": "https://mail.google.com",
+    "google": "https://www.google.com",
+    "maps": "https://maps.google.com",
+    "google maps": "https://maps.google.com",
+    "whatsapp": "https://web.whatsapp.com",
+    "linkedin": "https://www.linkedin.com",
+    "reddit": "https://www.reddit.com",
+    "tiktok": "https://www.tiktok.com",
+    "netflix": "https://www.netflix.com",
+    "amazon": "https://www.amazon.com",
+    "github": "https://www.github.com",
+    "wikipedia": "https://www.wikipedia.org",
+    "chatgpt": "https://chat.openai.com",
+    "gemini": "https://gemini.google.com",
+    "openai": "https://www.openai.com",
+    "twitch": "https://www.twitch.tv",
+    "discord": "https://discord.com",
+    "slack": "https://app.slack.com",
+    "zoom": "https://zoom.us",
+    "drive": "https://drive.google.com",
+    "google drive": "https://drive.google.com",
+    "docs": "https://docs.google.com",
+    "sheets": "https://sheets.google.com",
+    "outlook": "https://outlook.live.com",
+    "pinterest": "https://www.pinterest.com",
+    "snapchat": "https://web.snapchat.com",
+}
+
 def open_application(app_name: str) -> str:
-    """Opens a specific application on the local system."""
+    """Opens a specific application or website on the local system."""
     os_name = platform.system()
+    app_lower = app_name.lower().strip()
+    
     try:
-        # Check if app_name is actually a URL
-        is_url = any(x in app_name.lower() for x in [".com", ".org", ".net", ".io", "http://", "https://", "www."])
-        
-        if os_name == "Darwin":
-            if is_url:
-                url = app_name if "://" in app_name else f"https://{app_name}"
+        # 1. Check known web services first (facebook, youtube, etc.)
+        if app_lower in WEB_SERVICES:
+            url = WEB_SERVICES[app_lower]
+            if os_name == "Darwin":
                 subprocess.Popen(["open", url])
-                return f"Opening {url}..."
-                
+            elif os_name == "Windows":
+                os.startfile(url)
+            elif os_name == "Linux":
+                subprocess.Popen(["xdg-open", url])
+            return f"Opening {app_name.capitalize()} in your browser."
+
+        # 2. Check if app_name is a URL / domain
+        is_url = any(x in app_lower for x in [".com", ".org", ".net", ".io", ".lk", "http://", "https://", "www."])
+        
+        if is_url:
+            url = app_name if "://" in app_name else f"https://{app_name}"
+            if os_name == "Darwin":
+                subprocess.Popen(["open", url])
+            elif os_name == "Windows":
+                os.startfile(url)
+            elif os_name == "Linux":
+                subprocess.Popen(["xdg-open", url])
+            return f"Opening {url} in your browser."
+
+        # 3. Try to open as a local application
+        if os_name == "Darwin":
             res = subprocess.run(["open", "-a", app_name], capture_output=True, text=True)
             if res.returncode != 0:
-                return f"Could not find {app_name}. Would you like me to search for it on the internet?"
-                
-            return f"Opened {app_name} on macOS."
+                # Last resort: open as a web search
+                search_url = f"https://www.google.com/search?q={app_name.replace(' ', '+')}"
+                subprocess.Popen(["open", search_url])
+                return f"Could not find '{app_name}' installed. Searching the web for it instead."
+            return f"Opened {app_name}."
         elif os_name == "Windows":
-            if is_url:
-                url = app_name if "://" in app_name else f"https://{app_name}"
-                os.startfile(url)
-                return f"Opening {url}..."
             os.startfile(app_name)
-            return f"Opened {app_name} on Windows."
+            return f"Opened {app_name}."
         elif os_name == "Linux":
-            if is_url:
-                url = app_name if "://" in app_name else f"https://{app_name}"
-                subprocess.Popen(["xdg-open", url])
-                return f"Opening {url}..."
             subprocess.Popen([app_name])
-            return f"Opened {app_name} on Linux."
+            return f"Opened {app_name}."
         else:
             return f"Unsupported OS for opening {app_name}."
     except Exception as e:

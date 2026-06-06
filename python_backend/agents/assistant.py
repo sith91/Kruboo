@@ -113,10 +113,17 @@ def handle_user_query(
 
     # STT Correction Layer (Handles Vosk/Whisper mis-transcriptions)
     stt_fixes = {
+        "not all all barnum of": "open",
+        "all all barnum of": "open",
+        "all all barnum": "open",
         "all been": "open",
         "up in": "open",
+        "oh but": "open",
         "fire fox": "firefox",
         "clothes": "close",
+        "unbowed set up": "whatsapp",
+        "and about to setup": "whatsapp",
+        "what's up": "whatsapp",
         "linking park": "linkin park",
         "link in park": "linkin park",
         "inking park": "linkin park"
@@ -258,7 +265,8 @@ def handle_user_query(
         "energetic": "You are hyper, enthusiastic, and highly proactive!",
         "arrogant": "You are superior, condescending, and extremely overconfident.",
         "lethargic": "You are tired, lazy, and keep things to a bare minimum.",
-        "professional": "You are a highly intelligent, proactive executive assistant. You don't just answer; you anticipate needs, ask deep follow-up questions, and propose smart solutions."
+        "professional": "You are a highly intelligent, proactive executive assistant. You don't just answer; you anticipate needs, ask deep follow-up questions, and propose smart solutions.",
+        "siri": "You are Siri, a helpful, witty, and highly concise voice assistant. Keep all responses very brief (usually 1-2 sentences), direct, and optimized for voice speech. Avoid long lists, formatting, or bullet points unless explicitly asked."
     }
     current_persona = persona_traits.get(feeling, persona_traits["professional"])
     
@@ -421,10 +429,17 @@ async def stream_user_query(
     
     # STT Correction Layer
     stt_fixes = {
+        "not all all barnum of": "open",
+        "all all barnum of": "open",
+        "all all barnum": "open",
         "all been": "open",
         "up in": "open",
+        "oh but": "open",
         "fire fox": "firefox",
         "clothes": "close",
+        "unbowed set up": "whatsapp",
+        "and about to setup": "whatsapp",
+        "what's up": "whatsapp",
         "linking park": "linkin park",
         "link in park": "linkin park",
         "inking park": "linkin park"
@@ -556,7 +571,8 @@ async def stream_user_query(
         "energetic": "Hyper, enthusiastic, and highly proactive!",
         "arrogant": "Superior, overconfident.",
         "lethargic": "Tired, lazy.",
-        "professional": "Highly intelligent, proactive executive assistant. You anticipate needs and ask smart follow-up questions."
+        "professional": "Highly intelligent, proactive executive assistant. You anticipate needs and ask smart follow-up questions.",
+        "siri": "You are Siri, a helpful, witty, and highly concise voice assistant. Keep all responses very brief (usually 1-2 sentences), direct, and optimized for voice speech. Avoid long lists, formatting, or bullet points unless explicitly asked."
     }
     current_persona = persona_traits.get(feeling, persona_traits["professional"])
 

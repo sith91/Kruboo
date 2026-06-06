@@ -170,12 +170,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 payload: {
                     query: text,
                     chat_id: activeChatId.toString(),
-                    assistant_name: settings.name || "Nexus AI",
+                    assistant_name: settings.name || "Kruuboo",
                     llm_provider: provider,
                     llm_model: selectedModel,
                     api_key: settings.apiKey || "",
                     language: settings.lang || "en-US",
-                    feeling: settings.feeling || "professional"
+                    feeling: settings.feeling || "siri"
                 }
             }));
 
@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // WebSocket Sync
     function setupWebSocket() {
         const token = "localhost"; // Local app always uses localhost token
-        ws = new WebSocket(`ws://localhost:8000/ws/${token}`);
+        ws = new WebSocket(`ws://127.0.0.1:8000/ws/${token}`);
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
