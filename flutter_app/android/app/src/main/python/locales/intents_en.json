@@ -1,0 +1,26 @@
+{
+    "open_app": ["open ", "launch ", "start ", "all been ", "up in ", "run ", "go to ", "browse "],
+    "close_app": ["close ", "quit ", "exit ", "clothes ", "stop "],
+    "get_weather": [
+      "weather",
+      "temperature",
+      "how cold",
+      "how hot",
+      "is it raining",
+      "weather to do",
+      "weather today"
+    ],
+    "get_time": ["time", "clock", "what time", "tell time"],
+    "save_note": ["take a note", "save a note", "note down", "write down"],
+    "hide_orb": ["go away", "hide yourself", "dismiss", "minimize orb"],
+    "media_play": ["play ", "put on ", "listen to ", "hear ", "i want to listen to ", "i want to hear "],
+    "media_command": ["pause music", "stop music", "next song", "skip song", "previous track", "previous song", "pause playback"],
+    "send_message": ["whatsapp ", "message ", "email ", "viber ", "gmail ", "compose "],
+    "check_emails": ["check my emails", "any new emails", "check my promotions", "check my unread", "read my emails"],
+    "get_calendar": ["check my schedule", "what's on my calendar", "any meetings today", "what are my events", "show my calendar"],
+    "add_calendar": ["add a meeting ", "schedule a meeting ", "add an event ", "create a meeting "],
+    "new_chat": ["open new chat", "start new conversation", "create new chat", "new chat"],
+    "save_memory": ["remember that ", "save to memory ", "don't forget that ", "remind me that "],
+    "iot_control": ["turn on ", "turn off ", "switch on ", "switch off ", "activate ", "deactivate "],
+    "iot_discovery": ["scan for devices", "find my lights", "discover iot", "sync smart home"]
+}

@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';   // MethodChannel
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:speech_to_text/speech_to_text.dart';
+import 'package:http/http.dart' as http;
 
 import 'theme/app_theme.dart';
 import 'widgets/orb_widget.dart';
@@ -56,6 +59,8 @@ class _MainScreenState extends State<MainScreen> {
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
   final FlutterTts _flutterTts = FlutterTts();
+  final SpeechToText _speechToText = SpeechToText();
+  bool _speechEnabled = false;
   
   // Configuration
   String _assistantName = "Kruuboo";
@@ -74,7 +79,6 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _startPythonBackend();
     _initTts();
-    _initWebSocket();
   }
 
   void _initWebSocket() {
@@ -123,20 +127,54 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  void _startPythonBackend() async {
-    try {
-      // Note: This logic assumes the backend exists in the parent directory as per the plan
-      _pythonProcess = await Process.start(
-        'python',
-        ['main.py'],
-        workingDirectory: '../python_backend',
-      );
+  // ── Backend channel (Android: Chaquopy ForegroundService) ───────────────
+  static const _backendChannel = MethodChannel('com.kruuboo/backend');
 
-      _pythonProcess?.stdout.transform(utf8.decoder).listen((data) => debugPrint("Backend: $data"));
-      _pythonProcess?.stderr.transform(utf8.decoder).listen((data) => debugPrint("Backend Error: $data"));
-    } catch (e) {
-      debugPrint("Could not start backend: $e");
+  void _startPythonBackend() async {
+    if (Platform.isAndroid) {
+      // On Android: delegate to Kotlin BackendService which runs Python via Chaquopy
+      try {
+        final result = await _backendChannel.invokeMethod<String>('startBackend');
+        debugPrint("[Backend] Android service: $result");
+        _waitForBackendReady();
+      } on MissingPluginException {
+        debugPrint("[Backend] MethodChannel not available — running without embedded backend");
+      } catch (e) {
+        debugPrint("[Backend] Failed to start Android service: $e");
+      }
+    } else {
+      // Desktop fallback (macOS / Linux): spawn Python process directly
+      try {
+        _pythonProcess = await Process.start(
+          'python3',
+          ['main.py'],
+          workingDirectory: '../python_backend',
+        );
+        _pythonProcess?.stdout.transform(utf8.decoder).listen((d) => debugPrint("[Backend] $d"));
+        _pythonProcess?.stderr.transform(utf8.decoder).listen((d) => debugPrint("[Backend ERR] $d"));
+        _waitForBackendReady();
+      } catch (e) {
+        debugPrint("[Backend] Could not start desktop process: $e");
+      }
     }
+  }
+
+  Future<void> _waitForBackendReady() async {
+    setState(() => _orbState = OrbState.thinking);
+    for (int i = 0; i < 20; i++) {
+      await Future.delayed(const Duration(seconds: 1));
+      try {
+        final res = await http.get(Uri.parse('http://127.0.0.1:8000/')).timeout(
+          const Duration(seconds: 1));
+        if (res.statusCode == 200) {
+          _initWebSocket();
+          setState(() => _orbState = OrbState.idle);
+          return;
+        }
+      } catch (_) {}
+    }
+    debugPrint('[Backend] Timeout — backend may not have started');
+    setState(() => _orbState = OrbState.idle);
   }
 
   @override
@@ -158,36 +196,69 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _startRecording() async {
-    if (await _recorder.hasPermission()) {
-      final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/voice_input.wav';
+    if (Platform.isAndroid) {
+      if (!_speechEnabled) {
+        _speechEnabled = await _speechToText.initialize(
+          onError: (val) => debugPrint('STT Error: $val'),
+          onStatus: (val) => debugPrint('STT Status: $val'),
+        );
+      }
       
-      const config = RecordConfig(encoder: AudioEncoder.wav);
-      await _recorder.start(config, path: path);
-      
-      setState(() {
-        _orbState = OrbState.listening;
-      });
+      if (_speechEnabled) {
+        setState(() {
+          _orbState = OrbState.listening;
+        });
+        
+        await _speechToText.listen(
+          onResult: (result) {
+            if (result.finalResult && result.recognizedWords.isNotEmpty) {
+              _sendMessage(result.recognizedWords, isVoice: true);
+            }
+          },
+          localeId: _language == 'Sinhala' ? 'si-LK' : _language == 'Tamil' ? 'ta-IN' : 'en-US',
+        );
+      } else {
+        debugPrint("Speech recognition not available");
+      }
+    } else {
+      if (await _recorder.hasPermission()) {
+        final dir = await getTemporaryDirectory();
+        final path = '${dir.path}/voice_input.wav';
+        
+        const config = RecordConfig(encoder: AudioEncoder.wav);
+        await _recorder.start(config, path: path);
+        
+        setState(() {
+          _orbState = OrbState.listening;
+        });
+      }
     }
   }
 
   Future<void> _stopRecording() async {
-    final path = await _recorder.stop();
-    setState(() {
-      _orbState = OrbState.thinking;
-    });
+    if (Platform.isAndroid) {
+      await _speechToText.stop();
+      setState(() {
+        _orbState = OrbState.thinking;
+      });
+    } else {
+      final path = await _recorder.stop();
+      setState(() {
+        _orbState = OrbState.thinking;
+      });
 
-    if (path != null) {
-      final file = File(path);
-      final transcription = await _apiService.transcribeAudio(file, _language, _sttProvider == 'whisper' ? _apiKey : null);
-      
-      if (transcription != null && transcription.isNotEmpty) {
-        _sendMessage(transcription, isVoice: true);
+      if (path != null) {
+        final file = File(path);
+        final transcription = await _apiService.transcribeAudio(file, _language, _sttProvider == 'whisper' ? _apiKey : null);
+        
+        if (transcription != null && transcription.isNotEmpty) {
+          _sendMessage(transcription, isVoice: true);
+        } else {
+          setState(() => _orbState = OrbState.idle);
+        }
       } else {
         setState(() => _orbState = OrbState.idle);
       }
-    } else {
-      setState(() => _orbState = OrbState.idle);
     }
   }
 

@@ -14,6 +14,8 @@ pluginManagement {
         google()
         mavenCentral()
         gradlePluginPortal()
+        // Chaquopy repository
+        maven { url = uri("https://chaquo.com/maven") }
     }
 }
 
@@ -21,6 +23,8 @@ plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.11.1" apply false
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    // Chaquopy: embeds CPython into the Android APK
+    id("com.chaquo.python") version "15.0.1" apply false
 }
 
 include(":app")
