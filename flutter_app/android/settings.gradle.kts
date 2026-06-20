@@ -24,7 +24,7 @@ plugins {
     id("com.android.application") version "8.11.1" apply false
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
     // Chaquopy: embeds CPython into the Android APK
-    id("com.chaquo.python") version "15.0.1" apply false
+    id("com.chaquo.python") version "17.0.0" apply false
 }
 
 include(":app")

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -34,48 +36,50 @@ android {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
 
-        python {
-            // CPython version bundled in the APK
-            version = "3.8"
+        chaquopy {
+            defaultConfig {
+                // CPython version bundled in the APK
+                version = "3.10"
 
-            // Try local.properties for buildPython, fall back to common paths
-            buildPython(findBuildPython())
+                // Try local.properties for buildPython, fall back to common paths
+                buildPython(findBuildPython())
 
-            pip {
-                // ── Core API server ─────────────────────────────────────────
-                install("fastapi==0.104.1")
-                install("uvicorn==0.24.0")
-                install("pydantic==2.5.2")
-                install("python-multipart")
-                install("starlette")
-                install("anyio")
+                pip {
+                    // ── Core API server ─────────────────────────────────────────
+                    install("fastapi==0.104.1")
+                    install("uvicorn==0.24.0")
+                    install("pydantic==1.10.13")
+                    install("python-multipart")
+                    install("starlette")
+                    install("anyio")
 
-                // ── LLM providers ────────────────────────────────────────────
-                install("openai>=1.6.1")
-                install("anthropic")
+                    // ── LLM providers ────────────────────────────────────────────
+                    install("openai>=1.6.1")
+                    install("anthropic")
 
-                // ── Networking / utilities ───────────────────────────────────
-                install("requests")
-                install("aiohttp")
-                install("httpx")
-                install("python-dotenv==1.0.0")
+                    // ── Networking / utilities ───────────────────────────────────
+                    install("requests")
+                    install("aiohttp")
+                    install("httpx")
+                    install("python-dotenv==1.0.0")
 
-                // ── Text-to-Speech (online) ──────────────────────────────────
-                install("gTTS")
+                    // ── Text-to-Speech (online) ──────────────────────────────────
+                    install("gTTS")
 
-                // ── Web search ───────────────────────────────────────────────
-                install("duckduckgo-search==3.9.6")
-                install("trafilatura")
-                install("beautifulsoup4")
-                install("lxml")
+                    // ── Web search ───────────────────────────────────────────────
+                    install("duckduckgo-search==3.9.6")
+                    install("trafilatura")
+                    install("beautifulsoup4")
+                    install("lxml")
 
-                // ── Numerics (available in Chaquopy ARM registry) ─────────────
-                // Used for cosine similarity in memory_manager.py
-                install("numpy")
+                    // ── Numerics (available in Chaquopy ARM registry) ─────────────
+                    // Used for cosine similarity in memory_manager.py
+                    install("numpy")
 
-                // NOTE: vosk, sentence-transformers are NOT available via Chaquopy pip.
-                // Semantic embeddings are handled by EmbeddingService.kt (onnxruntime-android AAR).
-                // STT is handled by Flutter speech_to_text plugin.
+                    // NOTE: vosk, sentence-transformers are NOT available via Chaquopy pip.
+                    // Semantic embeddings are handled by EmbeddingService.kt (onnxruntime-android AAR).
+                    // STT is handled by Flutter speech_to_text plugin.
+                }
             }
         }
     }
@@ -93,7 +97,7 @@ dependencies {
     // onnxruntime-android: native ARM64/ARMv7 ONNX inference (replaces sentence-transformers pip)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.3")
     // DJL Android tokenizers: Hugging Face WordPiece tokenizer for all-MiniLM-L6-v2
-    implementation("ai.djl.android:tokenizers:0.27.0")
+    implementation("ai.djl.huggingface:tokenizers:0.27.0")
 
     // ── AndroidX / notification support ─────────────────────────────────────
     implementation("androidx.core:core-ktx:1.12.0")
@@ -108,17 +112,26 @@ fun findBuildPython(): String {
     // 1. Check local.properties for explicit override: buildPython=/path/to/python3
     val propsFile = rootProject.file("local.properties")
     if (propsFile.exists()) {
-        val props = java.util.Properties()
+        val props = Properties()
         propsFile.inputStream().use { props.load(it) }
         val fromProps = props.getProperty("buildPython")
         if (!fromProps.isNullOrBlank()) return fromProps
     }
-    // 2. Fallback candidates
-    for (candidate in listOf("/usr/bin/python3", "/usr/local/bin/python3", "python3")) {
+    // 2. Fallback candidates — Chaquopy 17+ requires buildPython to match app Python version (3.10)
+    for (candidate in listOf(
+        rootProject.file("../standalone_python/python/bin/python3").absolutePath,
+        "python3.10",
+        "/usr/bin/python3.10",
+        "/usr/local/bin/python3.10",
+        "/opt/homebrew/bin/python3.10",
+        "/usr/bin/python3",
+        "/usr/local/bin/python3",
+        "python3"
+    )) {
         try {
             val result = ProcessBuilder(candidate, "--version").start()
             if (result.waitFor() == 0) return candidate
         } catch (_: Exception) {}
     }
-    return "python3"
+    return "python3.10"
 }
