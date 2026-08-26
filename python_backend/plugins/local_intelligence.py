@@ -35,11 +35,11 @@ class LocalIntelligencePlugin:
     def format_phi3_prompt(system_prompt, messages, query=""):
         """
         Build a SHORT prompt that fits within a 512-token CPU context.
-        Only include: a brief system role line + the most recent user message.
+        Only include: the system prompt + the most recent user message.
         Skips history and web research to leave room for the model response.
         """
-        # Short system line (max ~50 tokens)
-        role_line = "You are a helpful AI assistant. Be concise and direct."
+        # Use the passed system_prompt if available
+        role_line = system_prompt if system_prompt else "You are a helpful AI assistant. Be concise and direct."
 
         # Find the actual user query (last user message in messages list)
         user_query = query

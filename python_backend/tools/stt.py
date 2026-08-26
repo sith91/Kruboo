@@ -29,8 +29,8 @@ def transcribe_audio_bytes(audio_bytes: bytes, language: str = "en-US", api_key:
     # 1. Premium Fallback: OpenAI Whisper (High Quality & Translation)
     if api_key:
         try:
-            import openai
-            openai.api_key = api_key
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key)
             
             # Save bytes to temp file for OpenAI API
             import tempfile
@@ -43,13 +43,19 @@ def transcribe_audio_bytes(audio_bytes: bytes, language: str = "en-US", api_key:
                 if "si" in language.lower():
                     print("Using Whisper TRANSLATE for Sinhala...")
                     with open(tmp_path, "rb") as audio_file:
-                        transcript = openai.Audio.translate("whisper-1", audio_file)
-                        text = transcript.get("text", "")
+                        translation = client.audio.translations.create(
+                            model="whisper-1",
+                            file=audio_file
+                        )
+                        text = translation.text
                 else:
                     print(f"Using Whisper TRANSCRIBE for {language}...")
                     with open(tmp_path, "rb") as audio_file:
-                        transcript = openai.Audio.transcribe("whisper-1", audio_file)
-                        text = transcript.get("text", "")
+                        transcription = client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file
+                        )
+                        text = transcription.text
                 
                 print(f"Whisper Result: [{text}]")
                 return text

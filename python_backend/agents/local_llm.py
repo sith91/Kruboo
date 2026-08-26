@@ -37,10 +37,14 @@ class LocalLLM:
             try:
                 from llama_cpp import Llama
                 print(f"[LocalLLM] Loading {os.path.basename(model_path)} (CPU-only)...")
+                # Dynamically set optimal threads count based on available CPU cores
+                cpu_cores = os.cpu_count() or 4
+                optimal_threads = max(4, cpu_cores - 2 if cpu_cores > 4 else cpu_cores)
+                
                 cls._model = Llama(
                     model_path=model_path,
-                    n_ctx=512,          # Small context fits in CPU RAM without crashing
-                    n_threads=4,        # Use 4 CPU threads
+                    n_ctx=2048,          # Increased to 2048 to prevent truncation of prompts/responses
+                    n_threads=optimal_threads, # Use dynamically optimized CPU threads
                     n_gpu_layers=0,     # CPU ONLY — no Metal/GPU
                     verbose=False,
                 )
@@ -59,7 +63,7 @@ class LocalLLM:
             return "I'm running in offline mode. Please configure an API key in Settings for full AI responses."
         with cls._inference_lock:
             try:
-                result = model(prompt, max_tokens=150, stop=["<|user|>", "<|end|>", "User:", "\n\n"], echo=False)
+                result = model(prompt, max_tokens=512, stop=["<|user|>", "<|end|>", "<|system|>", "User:", "user:", "Assistant:", "assistant:"], echo=False)
                 return result["choices"][0]["text"].strip()
             except Exception as e:
                 return f"LLM Error: {e}"
@@ -74,8 +78,8 @@ class LocalLLM:
             try:
                 for chunk in model(
                     prompt,
-                    max_tokens=150,
-                    stop=["<|user|>", "<|end|>", "User:", "\n\n"],
+                    max_tokens=512,
+                    stop=["<|user|>", "<|end|>", "<|system|>", "User:", "user:", "Assistant:", "assistant:"],
                     stream=True,
                     echo=False,
                 ):

@@ -53,9 +53,16 @@ class IoTConnectorManager:
 
     def get_active_connectors(self):
         """Returns all currently configured connectors."""
-        # This would scan the DB for keys starting with 'iot_connector_'
-        # For simplicity, returning a mock based on what's in 'system_settings'
-        pass
+        active = {}
+        for vendor in ["tasmota", "wled", "philips_hue", "tuya"]:
+            key = f"iot_connector_{vendor}"
+            val = self.memory.get_setting(key)
+            if val:
+                try:
+                    active[vendor] = json.loads(val)
+                except Exception:
+                    pass
+        return active
 
     def dispatch_command(self, device_name, action, value=None):
         """

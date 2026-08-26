@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from tools.system_tools import open_application, close_application, take_note, manage_files, get_time, get_weather, get_system_stats, control_media, messaging_tool
+from tools.system_tools import open_application, close_application, take_note, manage_files, get_time, get_weather, get_system_stats, control_media, messaging_tool, make_call, set_alarm, read_sms_messages
 from plugins.universal_search import universal_research
 from plugins.local_intelligence import LocalIntelligencePlugin
 from agents.intent_parser import IntentParser
@@ -12,10 +12,10 @@ from tools.memory_manager import MemoryManager
 memory = MemoryManager()
 
 # Plugin Registry
-from plugins.gmail_plugin import GmailPlugin
+from plugins.google_connectors.gmail_plugin import GmailPlugin
 _gmail_plugin = GmailPlugin()
 
-from plugins.calendar_plugin import CalendarPlugin
+from plugins.google_connectors.calendar_plugin import CalendarPlugin
 _calendar_plugin = CalendarPlugin()
 
 try:
@@ -40,6 +40,62 @@ LOCALE_LANGUAGE_MAP = {
     "ta": "Tamil",
 }
 
+def format_api_error(e: Exception, provider: str) -> str:
+    err_str = str(e)
+    if any(term in err_str.lower() for term in ["402", "insufficient balance", "insufficient_balance", "payment required"]):
+        prov_lower = provider.lower()
+        if "deepseek" in prov_lower:
+            return "Your DeepSeek API account balance is insufficient (Error 402 - Insufficient Balance). Please top up your account at platform.deepseek.com or switch to a local model in Settings."
+        elif "openai" in prov_lower:
+            return "Your OpenAI API account balance is insufficient (Error 402 - Insufficient Balance). Please top up your account at platform.openai.com or switch to a local model in Settings."
+        elif "anthropic" in prov_lower:
+            return "Your Anthropic API account balance is insufficient (Error 402 - Insufficient Balance). Please top up your account at console.anthropic.com or switch to a local model in Settings."
+        elif "gemini" in prov_lower:
+            return "Your Gemini API/Google Cloud Billing account balance is insufficient (Error 402). Please check your settings at aistudio.google.com or Google Cloud Console."
+        else:
+            return f"API account balance is insufficient (Error 402). Please check payment/billing settings for the provider '{provider}'."
+    return f"Research Error: {e}"
+
+def extract_and_save_facts_rules(query: str):
+    import re
+    query_clean = query.strip().rstrip(".!?,")
+    
+    # 1. Relations: "my wife's name is Tania", "my daughter's name is Seriah"
+    m = re.search(r"\b(?:my|our)\s+(wife|husband|daughter|son|mom|mother|dad|father|brother|sister|friend|dog|cat|pet)'s\s+name\s+is\s+([A-Za-z]+)", query_clean, re.IGNORECASE)
+    if m:
+        relation = m.group(1).lower()
+        name = m.group(2).capitalize()
+        fact = f"Your {relation}'s name is {name}."
+        existing = memory.get_all_facts(category="personal")
+        if not any(fact.lower() in f["fact"].lower() for f in existing):
+            memory.save_fact(fact, category="personal")
+            print(f"Rule-based Memory saved: {fact}")
+            return
+            
+    # 2. Alternates: "my wife is named Tania"
+    m = re.search(r"\b(?:my|our)\s+(wife|husband|daughter|son|mom|mother|dad|father|brother|sister|friend|dog|cat|pet)\s+is\s+named\s+([A-Za-z]+)", query_clean, re.IGNORECASE)
+    if m:
+        relation = m.group(1).lower()
+        name = m.group(2).capitalize()
+        fact = f"Your {relation}'s name is {name}."
+        existing = memory.get_all_facts(category="personal")
+        if not any(fact.lower() in f["fact"].lower() for f in existing):
+            memory.save_fact(fact, category="personal")
+            print(f"Rule-based Memory saved: {fact}")
+            return
+
+    # 3. Personal name: "my name is John"
+    m = re.search(r"\bmy\s+name\s+is\s+([A-Za-z]+)", query_clean, re.IGNORECASE)
+    if m:
+        name = m.group(1).capitalize()
+        fact = f"Your name is {name}."
+        existing = memory.get_all_facts(category="personal")
+        if not any(fact.lower() in f["fact"].lower() for f in existing):
+            memory.save_fact(fact, category="personal")
+            print(f"Rule-based Memory saved: {fact}")
+            return
+
+
 def handle_user_query(
     query: str,
     language: str = "English",
@@ -49,12 +105,16 @@ def handle_user_query(
     api_key: str = "",
     allow_web_search: bool = True,
     chat_id: str = "default",
-    feeling: str = "professional"
+    feeling: str = "professional",
+    image: str = None
 ) -> tuple[str, str]:
     """
     Realistic LLM reasoning loop. Supporting Universal Web Search Plugin (Deep Researcher).
     Uses LocalIntelligencePlugin for model-specific persona and tag steering.
     """
+    
+    # Rule-based Memory Fallback
+    extract_and_save_facts_rules(query)
     
     # Retrieve persistent history
     history = memory.get_history(chat_id, limit=6)
@@ -139,6 +199,168 @@ def handle_user_query(
     tool_result = None
     action = "chat_response"
 
+    # Multimodal Vision Analysis Router
+    if image:
+        import base64
+        import requests
+        import re
+        img_data = image
+        if "base64," in img_data:
+            img_data = img_data.split("base64,", 1)[1]
+        
+        response_text = ""
+        prov_lower = provider.lower()
+        
+        if prov_lower == "local" or prov_lower == "ollama":
+            # Try local Ollama vision endpoint
+            try:
+                ollama_model = "llava"
+                if "3.2" in model:
+                    ollama_model = "llama3.2-vision"
+                elif model and model not in ["llama-3", "mistral"]:
+                    ollama_model = model
+                    
+                payload = {
+                    "model": ollama_model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": query,
+                            "images": [img_data]
+                        }
+                    ],
+                    "stream": False
+                }
+                r = requests.post("http://localhost:11434/api/chat", json=payload, timeout=20)
+                if r.status_code == 200:
+                    response_text = r.json()["message"]["content"]
+            except Exception as e:
+                print(f"Ollama local vision model query failed: {e}")
+        
+        elif prov_lower == "openai" and (api_key or os.getenv("OPENAI_API_KEY")):
+            key = api_key or os.getenv("OPENAI_API_KEY")
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {
+                "model": model if "gpt" in model else "gpt-4o",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": query},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_data}"}}
+                        ]
+                    }
+                ]
+            }
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=30)
+                if r.status_code == 200:
+                    response_text = r.json()["choices"][0]["message"]["content"]
+                else:
+                    response_text = f"OpenAI Vision API Error (Status {r.status_code}): {r.text}"
+            except Exception as e:
+                response_text = f"OpenAI Vision Error: {e}"
+        
+        elif prov_lower == "anthropic" and (api_key or os.getenv("ANTHROPIC_API_KEY")):
+            key = api_key or os.getenv("ANTHROPIC_API_KEY")
+            url = "https://api.anthropic.com/v1/messages"
+            headers = {
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            payload = {
+                "model": "claude-3-5-sonnet-20240620",
+                "max_tokens": 1024,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": img_data
+                                }
+                            },
+                            {"type": "text", "text": query}
+                        ]
+                    }
+                ]
+            }
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=30)
+                response_text = r.json()["content"][0]["text"]
+            except Exception as e:
+                response_text = f"Anthropic Vision Error: {e}"
+                
+        elif prov_lower == "gemini" or (api_key or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")):
+            key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+            if key:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": query},
+                                {
+                                    "inlineData": {
+                                        "mimeType": "image/jpeg",
+                                        "data": img_data
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+                try:
+                    r = requests.post(url, headers=headers, json=payload, timeout=30)
+                    if r.status_code == 200:
+                        response_text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    else:
+                        raise Exception(f"Status {r.status_code}: {r.text}")
+                except Exception as e:
+                    pass
+        
+        if not response_text:
+            # Free independent Pollinations AI Vision fallback
+            url = "https://gen.pollinations.ai/v1/chat/completions"
+            headers = {"Content-Type": "application/json"}
+            payload = {
+                "model": "openai",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": query},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_data}"}}
+                        ]
+                    }
+                ]
+            }
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=30)
+                if r.status_code == 200:
+                    response_text = r.json()["choices"][0]["message"]["content"]
+                else:
+                    response_text = f"Pollinations Vision API Error (Status {r.status_code}): {r.text}"
+            except Exception as e:
+                response_text = f"Vision Error: {e}"
+
+        if "[MEMORIZE:" in response_text:
+            match = re.search(r"\[MEMORIZE:\s*([^\]]*?)(?:\]|$)", response_text)
+            if match:
+                fact = match.group(1).strip()
+                memory.save_fact(fact, category="personal")
+            response_text = re.sub(r"\[MEMORIZE:.*?(?:\]|$)", "", response_text).strip()
+
+        memory.add_message(chat_id, "user", f"[Sent an Image] {query}")
+        memory.add_message(chat_id, "assistant", response_text)
+        return response_text, "vision_analysis"
+
     search_keywords = ["search", "look up", "who is", "what is", "current price", "news info", "latest about", "check", "find", "research", "tell me about", "get details", "details about", "information", "info on", "explain", "how many", "what are"]
     
     # Smarter search detection: Skip research for greetings or short non-technical queries
@@ -155,10 +377,33 @@ def handle_user_query(
     # Intent Parser: Handle multilingual system commands
     action_intent, target_val = IntentParser.parse(query, language)
     
+    # Intercept screen insight to request Android MediaProjection capture
+    if action_intent == "screen_insight":
+        img_b64 = None
+        try:
+            from com.example.ai_assistant_app import BackendService
+            img_b64 = BackendService.getScreenCaptureBase64()
+        except Exception as e:
+            print(f"Failed to capture screen: {e}")
+        
+        if img_b64:
+            image = img_b64
+            action_intent = None
+        else:
+            return "I couldn't capture your screen. Please make sure you have granted the required screen recording permission.", "screen_insight_failed"
+            
+    elif action_intent == "visual_interpreter":
+        return "Opening camera. Please show me what you'd like me to look at.", "visual_interpreter"
+        
+    elif action_intent == "object_recognition":
+        return "Opening camera to detect objects.", "object_recognition"
+
     # If a new media play command is detected at the parser level, clear any old pending states
     if action_intent == "media_play":
         pending_media_queries[chat_id] = None
         pending_platform_queries[chat_id] = None
+
+    if action_intent:
         if action_intent == "open_app":
             tool_result = open_application(target_val)
             action = f"open_app: {target_val}"
@@ -190,6 +435,21 @@ def handle_user_query(
                 pending_platform_queries[chat_id] = track_name
                 tool_result = f"I couldn't find '{track_name}' in your Apple Music library. Would you like me to search on Spotify or YouTube Music?"
             action = f"media_play: {target_val}"
+        elif action_intent == "make_call":
+            tool_result = make_call(target_val)
+            action = f"make_call: {target_val}"
+        elif action_intent == "set_alarm":
+            parts = target_val.split(" ", 1)
+            time_str = parts[0]
+            msg = parts[1] if len(parts) > 1 else "Kruboo Alarm"
+            tool_result = set_alarm(time_str, msg)
+            action = f"set_alarm: {time_str}"
+        elif action_intent == "read_sms":
+            limit = 5
+            try: limit = int(target_val)
+            except: pass
+            tool_result = read_sms_messages(limit)
+            action = f"read_sms: {limit}"
         elif action_intent == "check_emails":
             category = "INBOX"
             if "promotion" in query_lower: category = "PROMOTIONS"
@@ -216,6 +476,7 @@ def handle_user_query(
             summary = parts[0]
             # In a real app, we'd use LLM to parse ISO time. 
             # For now, we'll assume a simple format or use current time as placeholder
+            import datetime
             start_time = datetime.datetime.utcnow().isoformat() + 'Z' 
             end_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=1)).isoformat() + 'Z'
             tool_result = _calendar_plugin.execute("add_event", {"summary": summary, "start_time": start_time, "end_time": end_time})
@@ -246,6 +507,44 @@ def handle_user_query(
             from tools.iot_control import IoTManager
             tool_result = IoTManager.discover_devices()
             action = "iot_discovery"
+        elif action_intent == "file_search":
+            tool_result = manage_files("search", target_val)
+            action = f"file_search: {target_val}"
+        elif action_intent == "file_list":
+            dir_path = target_val if target_val else "."
+            tool_result = manage_files("list", dir_path)
+            action = f"file_list: {dir_path}"
+        elif action_intent == "file_read":
+            tool_result = manage_files("read", target_val)
+            action = f"file_read: {target_val}"
+        elif action_intent == "file_open":
+            tool_result = manage_files("open", target_val)
+            action = f"file_open: {target_val}"
+        elif action_intent == "file_write":
+            filename = target_val
+            content = None
+            if " with content " in target_val:
+                filename, content = target_val.split(" with content ", 1)
+            elif " containing " in target_val:
+                filename, content = target_val.split(" containing ", 1)
+            tool_result = manage_files("write", filename.strip(), content)
+            action = f"file_write: {filename}"
+        elif action_intent == "run_shell_command":
+            cmd = "brew install python" if "install python" in query_lower else target_val
+            cmd_lower = cmd.lower().strip()
+            if cmd_lower.startswith("google ") or cmd_lower.startswith("search "):
+                query_to_search = cmd.split(" ", 1)[1].strip().strip('"').strip("'")
+                import urllib.parse
+                search_url = f"https://www.google.com/search?q={urllib.parse.quote(query_to_search)}"
+                import platform as platform_sys
+                if platform_sys.system() == "Darwin":
+                    cmd = f"open \"{search_url}\""
+                elif platform_sys.system() == "Windows":
+                    cmd = f"start {search_url}"
+                else:
+                    cmd = f"xdg-open \"{search_url}\""
+            tool_result = f"PROPOSED_COMMAND: {cmd}"
+            action = f"file_propose_command: {cmd}"
             
     elif should_search:
         print(f"Triggering Universal Researcher for: {query}")
@@ -253,7 +552,7 @@ def handle_user_query(
         action = "universal_web_research"
 
     # Short-circuit for system-level actions that don't need LLM synthesis
-    short_circuit_actions = ["open_app", "close_app", "save_note", "get_time", "get_weather", "get_system_stats", "media_", "save_memory", "iot_"]
+    short_circuit_actions = ["open_app", "close_app", "save_note", "get_time", "get_weather", "get_system_stats", "media_", "save_memory", "iot_", "file_"]
     if any(action.startswith(prefix) for prefix in short_circuit_actions):
         memory.add_message(chat_id, "user", query)
         memory.add_message(chat_id, "assistant", str(tool_result))
@@ -269,17 +568,19 @@ def handle_user_query(
         "siri": "You are Siri, a helpful, witty, and highly concise voice assistant. Keep all responses very brief (usually 1-2 sentences), direct, and optimized for voice speech. Avoid long lists, formatting, or bullet points unless explicitly asked."
     }
     current_persona = persona_traits.get(feeling, persona_traits["professional"])
-    
-    # Resolve locale code to a human-readable language name for the LLM
     response_language = LOCALE_LANGUAGE_MAP.get(language, LOCALE_LANGUAGE_MAP.get(language.lower(), language))
-    
+    needs_scripting = any(kw in query.lower() for kw in ["run", "execute", "install", "command", "script", "code", "python", "terminal", "shell", "calculate", "math", "program", "google", "search"])
+    scripting_rule = "LOCAL SCRIPTING RULE: If the user asks for a task requiring programming, scripting, math/calculations, or data/file processing, write a shell command or inline python code and prefix the output with `PROPOSED_COMMAND: <command>` (e.g. `PROPOSED_COMMAND: python3 -c \"...\"`) so the user can approve and run it locally. Keep commands safe and do not use blocked commands like sudo or rm. " if needs_scripting else ""
+
     system_prompt = (
         f"Your name is {assistant_name}. You are {assistant_name}, a proactive and highly intelligent research and executive agent. "
         f"{current_persona} Respond in {response_language}. "
         "CONVERSATIONAL RULE: Avoid robotic filler like 'I am here to help' or 'How can I assist?'. Instead, engage deeply with the user's context. "
+        "If the user tells you something important to remember, respond normally but include [MEMORIZE: fact] at the end of your message. "
         "If the user shares something personal or emotional, acknowledge it with intelligence and empathy, then ask a smart follow-up question to help or investigate further. "
         "PROACTIVE RULE: Always look for an opportunity to propose a smart action (e.g. searching the web, setting a reminder, or summarizing a complex topic) if it adds value. "
-        "IDENTITY RULE: Never deny your identity or say you are 'just an AI'. Embrace your persona as {assistant_name}. "
+        f"{scripting_rule}"
+        f"IDENTITY RULE: Never deny your identity or say you are 'just an AI'. Embrace your persona as {assistant_name}. "
         "IMPORTANT: If 'WEB_RESEARCH_RESULTS' are provided, synthesize them into a factual report. "
         "AVOID reading out or mentioning full source URLs in your spoken-style summary. "
         "Instead, provide any relevant source links EXACTLY in this Markdown format: [Title](URL) "
@@ -349,12 +650,21 @@ def handle_user_query(
             # Use LocalIntelligencePlugin to clean response
             response_text = LocalIntelligencePlugin.clean_local_response(raw_response)
 
+        import re
+        if "[MEMORIZE:" in response_text:
+            match = re.search(r"\[MEMORIZE:\s*([^\]]*?)(?:\]|$)", response_text)
+            if match:
+                fact = match.group(1).strip()
+                memory.save_fact(fact, category="personal")
+            response_text = re.sub(r"\[MEMORIZE:.*?(?:\]|$)", "", response_text).strip()
+
         memory.add_message(chat_id, "user", query)
         memory.add_message(chat_id, "assistant", response_text)
         return response_text, action
 
     except Exception as e:
-        return f"Internal error during research: {e}", "error"
+        friendly_err = format_api_error(e, provider)
+        return friendly_err, "error"
 
 async def stream_user_query(
     query: str,
@@ -365,13 +675,17 @@ async def stream_user_query(
     api_key: str = "",
     allow_web_search: bool = True,
     chat_id: str = "default",
-    feeling: str = "professional"
+    feeling: str = "professional",
+    image: str = None
 ):
     print(f"ASSISTANT: Starting stream query for '{query}' with provider {provider}")
     """
     Generator for live deep-research streaming.
     Uses LocalIntelligencePlugin for prompt and stop-marker management.
     """
+    # Rule-based Memory Fallback
+    extract_and_save_facts_rules(query)
+
     # Retrieve persistent history
     history = memory.get_history(chat_id, limit=6)
     
@@ -408,6 +722,170 @@ async def stream_user_query(
     
     tool_result = None
     action = "chat_response"
+
+    # Multimodal Vision Analysis Router
+    if image:
+        import base64
+        import requests
+        import re
+        img_data = image
+        if "base64," in img_data:
+            img_data = img_data.split("base64,", 1)[1]
+        
+        response_text = ""
+        prov_lower = provider.lower()
+        
+        if prov_lower == "local" or prov_lower == "ollama":
+            # Try local Ollama vision endpoint
+            try:
+                ollama_model = "llava"
+                if "3.2" in model:
+                    ollama_model = "llama3.2-vision"
+                elif model and model not in ["llama-3", "mistral"]:
+                    ollama_model = model
+                    
+                payload = {
+                    "model": ollama_model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": query,
+                            "images": [img_data]
+                        }
+                    ],
+                    "stream": False
+                }
+                r = requests.post("http://localhost:11434/api/chat", json=payload, timeout=20)
+                if r.status_code == 200:
+                    response_text = r.json()["message"]["content"]
+            except Exception as e:
+                print(f"Ollama local vision model query failed: {e}")
+        
+        elif prov_lower == "openai" and (api_key or os.getenv("OPENAI_API_KEY")):
+            key = api_key or os.getenv("OPENAI_API_KEY")
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {
+                "model": model if "gpt" in model else "gpt-4o",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": query},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_data}"}}
+                        ]
+                    }
+                ]
+            }
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=30)
+                if r.status_code == 200:
+                    response_text = r.json()["choices"][0]["message"]["content"]
+                else:
+                    response_text = f"OpenAI Vision API Error (Status {r.status_code}): {r.text}"
+            except Exception as e:
+                response_text = f"OpenAI Vision Error: {e}"
+        
+        elif prov_lower == "anthropic" and (api_key or os.getenv("ANTHROPIC_API_KEY")):
+            key = api_key or os.getenv("ANTHROPIC_API_KEY")
+            url = "https://api.anthropic.com/v1/messages"
+            headers = {
+                "x-api-key": key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            payload = {
+                "model": "claude-3-5-sonnet-20240620",
+                "max_tokens": 1024,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                    "data": img_data
+                                }
+                            },
+                            {"type": "text", "text": query}
+                        ]
+                    }
+                ]
+            }
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=30)
+                response_text = r.json()["content"][0]["text"]
+            except Exception as e:
+                response_text = f"Anthropic Vision Error: {e}"
+                
+        elif prov_lower == "gemini" or (api_key or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")):
+            key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY")
+            if key:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+                headers = {"Content-Type": "application/json"}
+                payload = {
+                    "contents": [
+                        {
+                            "parts": [
+                                {"text": query},
+                                {
+                                    "inlineData": {
+                                        "mimeType": "image/jpeg",
+                                        "data": img_data
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+                try:
+                    r = requests.post(url, headers=headers, json=payload, timeout=30)
+                    if r.status_code == 200:
+                        response_text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    else:
+                        raise Exception(f"Status {r.status_code}: {r.text}")
+                except Exception as e:
+                    pass
+        
+        if not response_text:
+            # Free independent Pollinations AI Vision fallback
+            url = "https://gen.pollinations.ai/v1/chat/completions"
+            headers = {"Content-Type": "application/json"}
+            payload = {
+                "model": "openai",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": query},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_data}"}}
+                        ]
+                    }
+                ]
+            }
+            try:
+                r = requests.post(url, headers=headers, json=payload, timeout=30)
+                if r.status_code == 200:
+                    response_text = r.json()["choices"][0]["message"]["content"]
+                else:
+                    response_text = f"Pollinations Vision API Error (Status {r.status_code}): {r.text}"
+            except Exception as e:
+                response_text = f"Vision Error: {e}"
+
+        if "[MEMORIZE:" in response_text:
+            match = re.search(r"\[MEMORIZE:\s*([^\]]*?)(?:\]|$)", response_text)
+            if match:
+                fact = match.group(1).strip()
+                memory.save_fact(fact, category="personal")
+            response_text = re.sub(r"\[MEMORIZE:.*?(?:\]|$)", "", response_text).strip()
+
+        memory.add_message(chat_id, "user", f"[Sent an Image] {query}")
+        memory.add_message(chat_id, "assistant", response_text)
+        yield json.dumps({"token": response_text, "action": action}) + "\n"
+        yield json.dumps({"action": "stream_done", "full_response": response_text}) + "\n"
+        return
     
     # Sinhala Data Processing Layer (using SinLingua)
     if _sinlingua_grammar and "si" in language.lower():
@@ -477,6 +955,33 @@ async def stream_user_query(
     # Intent Parser: Handle multilingual system commands
     action_intent, target_val = IntentParser.parse(query, language)
 
+    # Intercept screen insight to request Android MediaProjection capture
+    if action_intent == "screen_insight":
+        img_b64 = None
+        try:
+            from com.example.ai_assistant_app import BackendService
+            img_b64 = BackendService.getScreenCaptureBase64()
+        except Exception as e:
+            print(f"Failed to capture screen: {e}")
+        
+        if img_b64:
+            image = img_b64
+            action_intent = None
+        else:
+            yield json.dumps({"token": "I couldn't capture your screen. Please make sure you have granted the required screen recording permission. ", "action": "screen_insight_failed"}) + "\n"
+            yield json.dumps({"action": "stream_done", "full_response": "I couldn't capture your screen. Please make sure you have granted the required screen recording permission."}) + "\n"
+            return
+
+    elif action_intent == "visual_interpreter":
+        yield json.dumps({"token": "Opening camera. Please show me what you'd like me to look at. ", "action": "visual_interpreter"}) + "\n"
+        yield json.dumps({"action": "stream_done", "full_response": "Opening camera. Please show me what you'd like me to look at."}) + "\n"
+        return
+
+    elif action_intent == "object_recognition":
+        yield json.dumps({"token": "Opening camera to detect objects. ", "action": "object_recognition"}) + "\n"
+        yield json.dumps({"action": "stream_done", "full_response": "Opening camera to detect objects."}) + "\n"
+        return
+
     # If a new media play command is detected, clear any old pending states
     if action_intent == "media_play":
         pending_media_queries[chat_id] = None
@@ -506,6 +1011,21 @@ async def stream_user_query(
             yield json.dumps({"action": "hide_orb", "token": "Of course! I'll be right here in the tray if you need anything else.", "full_response": "Of course! I'll be right here in the tray if you need anything else."}) + "\n"
             yield json.dumps({"action": "stream_done"}) + "\n"
             return
+        elif action_intent == "make_call":
+            tool_result = make_call(target_val)
+            action = f"make_call: {target_val}"
+        elif action_intent == "set_alarm":
+            parts = target_val.split(" ", 1)
+            time_str = parts[0]
+            msg = parts[1] if len(parts) > 1 else "Kruboo Alarm"
+            tool_result = set_alarm(time_str, msg)
+            action = f"set_alarm: {time_str}"
+        elif action_intent == "read_sms":
+            limit = 5
+            try: limit = int(target_val)
+            except: pass
+            tool_result = read_sms_messages(limit)
+            action = f"read_sms: {limit}"
         elif action_intent == "check_emails":
             category = "INBOX"
             if "promotion" in query_lower: category = "PROMOTIONS"
@@ -543,6 +1063,44 @@ async def stream_user_query(
             memory.save_fact(target_val, category=category)
             tool_result = f"I've remembered that in your {category} details: {target_val}"
             action = f"save_memory: {target_val}"
+        elif action_intent == "file_search":
+            tool_result = manage_files("search", target_val)
+            action = f"file_search: {target_val}"
+        elif action_intent == "file_list":
+            dir_path = target_val if target_val else "."
+            tool_result = manage_files("list", dir_path)
+            action = f"file_list: {dir_path}"
+        elif action_intent == "file_read":
+            tool_result = manage_files("read", target_val)
+            action = f"file_read: {target_val}"
+        elif action_intent == "file_open":
+            tool_result = manage_files("open", target_val)
+            action = f"file_open: {target_val}"
+        elif action_intent == "file_write":
+            filename = target_val
+            content = None
+            if " with content " in target_val:
+                filename, content = target_val.split(" with content ", 1)
+            elif " containing " in target_val:
+                filename, content = target_val.split(" containing ", 1)
+            tool_result = manage_files("write", filename.strip(), content)
+            action = f"file_write: {filename}"
+        elif action_intent == "run_shell_command":
+            cmd = "brew install python" if "install python" in query_lower else target_val
+            cmd_lower = cmd.lower().strip()
+            if cmd_lower.startswith("google ") or cmd_lower.startswith("search "):
+                query_to_search = cmd.split(" ", 1)[1].strip().strip('"').strip("'")
+                import urllib.parse
+                search_url = f"https://www.google.com/search?q={urllib.parse.quote(query_to_search)}"
+                import platform as platform_sys
+                if platform_sys.system() == "Darwin":
+                    cmd = f"open \"{search_url}\""
+                elif platform_sys.system() == "Windows":
+                    cmd = f"start {search_url}"
+                else:
+                    cmd = f"xdg-open \"{search_url}\""
+            tool_result = f"PROPOSED_COMMAND: {cmd}"
+            action = f"file_propose_command: {cmd}"
             
     elif should_search:
         yield json.dumps({"token": " ", "action": "deep_research_start"}) + "\n"
@@ -553,7 +1111,7 @@ async def stream_user_query(
         action = "universal_web_research"
 
     # Short-circuit for system-level actions that don't need LLM synthesis
-    short_circuit_actions = ["open_app", "close_app", "save_note", "get_time", "get_weather", "get_system_stats", "media_", "new_chat", "save_memory"]
+    short_circuit_actions = ["open_app", "close_app", "save_note", "get_time", "get_weather", "get_system_stats", "media_", "new_chat", "save_memory", "file_"]
     if any(action.startswith(prefix) for prefix in short_circuit_actions):
         memory.add_message(chat_id, "user", query)
         memory.add_message(chat_id, "assistant", str(tool_result))
@@ -575,17 +1133,20 @@ async def stream_user_query(
         "siri": "You are Siri, a helpful, witty, and highly concise voice assistant. Keep all responses very brief (usually 1-2 sentences), direct, and optimized for voice speech. Avoid long lists, formatting, or bullet points unless explicitly asked."
     }
     current_persona = persona_traits.get(feeling, persona_traits["professional"])
-
-    # Resolve locale code to a human-readable language name for the LLM
     response_language = LOCALE_LANGUAGE_MAP.get(language, LOCALE_LANGUAGE_MAP.get(language.lower(), language))
+
+    needs_scripting = any(kw in query.lower() for kw in ["run", "execute", "install", "command", "script", "code", "python", "terminal", "shell", "calculate", "math", "program", "google", "search"])
+    scripting_rule = "LOCAL SCRIPTING RULE: If the user asks for a task requiring programming, scripting, math/calculations, or data/file processing, write a shell command or inline python code and prefix the output with `PROPOSED_COMMAND: <command>` (e.g. `PROPOSED_COMMAND: python3 -c \"...\"`) so the user can approve and run it locally. Keep commands safe and do not use blocked commands like sudo or rm. " if needs_scripting else ""
 
     system_prompt = (
         f"Your name is {assistant_name}. You are {assistant_name}, a proactive and highly intelligent research and executive agent. "
         f"{current_persona} Respond in {response_language}. "
         "CONVERSATIONAL RULE: Avoid robotic filler like 'I am here to help'. Instead, engage deeply with the user's context. "
+        "If the user tells you something important to remember, respond normally but include [MEMORIZE: fact] at the end of your message. "
         "If the user shares something personal or emotional, acknowledge it with intelligence and empathy, then ask a smart follow-up question to help or investigate further. "
         "PROACTIVE RULE: Always look for an opportunity to propose a smart action (e.g. searching the web, setting a reminder, or summarizing a complex topic) if it adds value. "
-        "IDENTITY RULE: Never deny your identity or say you are 'just an AI'. Embrace your persona as {assistant_name}. "
+        f"{scripting_rule}"
+        f"IDENTITY RULE: Never deny your identity or say you are 'just an AI'. Embrace your persona as {assistant_name}. "
         "IMPORTANT: If 'WEB_RESEARCH_RESULTS' are provided, you MUST synthesize them into a factual answer. "
         "AVOID reading out full source URLs; instead, provide them ONLY at the end of your response using Markdown format: [Title](URL). "
         "Do not claim ideological constraints; focus on summarizing the data provided. "
@@ -646,7 +1207,7 @@ async def stream_user_query(
             # Use LocalIntelligencePlugin for prompt tagging (pass query for sensitive topic detection)
             prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query)
             
-            stop_markers = ["<|end|>", "<|user|>", "<|assistant|>", "User:", "Assistant:", "---", "\n-"]
+            stop_markers = ["<|end|>", "<|user|>", "<|assistant|>", "User:", "Assistant:"]
             buffer = ""
             for token in LocalLLM.generate_stream(prompt_str, model_name=model):
                 buffer += token
@@ -681,9 +1242,18 @@ async def stream_user_query(
                     full_response += safe_tail
                     yield json.dumps({"token": safe_tail, "action": action}) + "\n"
 
+        import re
+        if "[MEMORIZE:" in full_response:
+            match = re.search(r"\[MEMORIZE:\s*([^\]]*?)(?:\]|$)", full_response)
+            if match:
+                fact = match.group(1).strip()
+                memory.save_fact(fact, category="personal")
+            full_response = re.sub(r"\[MEMORIZE:.*?(?:\]|$)", "", full_response).strip()
+
         memory.add_message(chat_id, "user", query)
         memory.add_message(chat_id, "assistant", full_response)
         yield json.dumps({"action": "stream_done", "full_response": full_response}) + "\n"
 
     except Exception as e:
-        yield json.dumps({"token": f"Research Error: {e}", "action": "error"}) + "\n"
+        friendly_err = format_api_error(e, provider)
+        yield json.dumps({"token": friendly_err, "action": "error"}) + "\n"

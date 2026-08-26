@@ -10,6 +10,8 @@ class MemoryManager:
         self.db_path = db_path
         self._model = None # Lazy load
         self._init_db()
+        # Ensure default plugins exist
+        self._ensure_default_plugins()
 
     @property
     def model(self):
@@ -52,11 +54,28 @@ class MemoryManager:
                 trigger_config TEXT,
                 action_type TEXT,
                 action_config TEXT,
+                device TEXT DEFAULT 'both',
                 last_run DATETIME,
                 enabled INTEGER DEFAULT 1
             )
         ''')
+        # Table for plugins
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS plugins (
+                name TEXT PRIMARY KEY,
+                description TEXT,
+                icon TEXT,
+                is_default INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1
+            )
+        ''')
         # Table for system configuration (Passcode, etc.)
+        # Ensure device column exists for backward compatibility
+        cursor.execute("PRAGMA table_info(automations)")
+        cols = [row[1] for row in cursor.fetchall()]
+        if 'device' not in cols:
+            cursor.execute("ALTER TABLE automations ADD COLUMN device TEXT DEFAULT 'both'")
+        
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS system_settings (
                 key TEXT PRIMARY KEY,
@@ -64,6 +83,22 @@ class MemoryManager:
             )
         ''')
         
+        conn.commit()
+        conn.close()
+
+    def _ensure_default_plugins(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        default_plugins = [
+            ('gmail', 'Gmail integration (requires OAuth)', 'mail_outline', 1, 0),
+            ('notes', 'Personal notes manager', 'note_alt_outlined', 1, 0),
+            ('web_search', 'Web search capability', 'language', 1, 0),
+        ]
+        for name, desc, icon, is_default, is_active in default_plugins:
+            cursor.execute(
+                "INSERT OR IGNORE INTO plugins (name, description, icon, is_default, is_active) VALUES (?, ?, ?, ?, ?)",
+                (name, desc, icon, is_default, is_active)
+            )
         conn.commit()
         conn.close()
 
@@ -95,6 +130,37 @@ class MemoryManager:
         cursor.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
         conn.commit()
         conn.close()
+
+    def get_all_chat_sessions(self):
+        """Return one summary row per chat_id, ordered most-recent first."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                m.chat_id,
+                MIN(m.timestamp)  AS started_at,
+                MAX(m.timestamp)  AS last_at,
+                COUNT(*)          AS message_count,
+                (SELECT content FROM messages
+                 WHERE chat_id = m.chat_id AND role = 'user'
+                 ORDER BY timestamp ASC LIMIT 1) AS first_message
+            FROM messages m
+            GROUP BY m.chat_id
+            ORDER BY last_at DESC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return [
+            {
+                "chat_id":       r[0],
+                "started_at":    r[1],
+                "last_at":       r[2],
+                "message_count": r[3],
+                "first_message": r[4] or "(empty)",
+            }
+            for r in rows
+        ]
+
 
     def save_fact(self, fact, category="general"):
         # Generate embedding for the fact
@@ -128,7 +194,8 @@ class MemoryManager:
                 # Simple cosine similarity: (A dot B) / (||A|| * ||B||)
                 # SentenceTransformer embeddings are usually normalized, so simple dot product works
                 score = np.dot(query_embedding, fact_embedding)
-                similarities.append((fact, score))
+                if score > 0.40:
+                    similarities.append((fact, score))
         
         # Sort by similarity score descending
         similarities.sort(key=lambda x: x[1], reverse=True)
@@ -152,16 +219,15 @@ class MemoryManager:
         conn.close()
 
     # --- Automation Management ---
-    def add_automation(self, name, t_type, t_config, a_type, a_config):
+    def add_automation(self, name, t_type, t_config, a_type, a_config, device='both'):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO automations (name, trigger_type, trigger_config, action_type, action_config) VALUES (?, ?, ?, ?, ?)",
-            (name, t_type, json.dumps(t_config), a_type, json.dumps(a_config))
+            "INSERT INTO automations (name, trigger_type, trigger_config, action_type, action_config, device) VALUES (?, ?, ?, ?, ?, ?)",
+            (name, t_type, json.dumps(t_config), a_type, json.dumps(a_config), device)
         )
         conn.commit()
         conn.close()
-
     def get_automations(self):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -171,8 +237,31 @@ class MemoryManager:
         return [{
             "id": r[0], "name": r[1], "trigger_type": r[2], 
             "trigger_config": json.loads(r[3]), "action_type": r[4], 
-            "action_config": json.loads(r[5]), "last_run": r[6], "enabled": r[7]
+            "action_config": json.loads(r[5]), "device": r[6], "last_run": r[7], "enabled": r[8]
         } for r in rows]
+
+    # Plugin management
+    def list_plugins(self, user_id=None):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, description, icon, is_default, is_active FROM plugins")
+        rows = cursor.fetchall()
+        conn.close()
+        return [{"name": r[0], "description": r[1], "icon": r[2], "is_default": bool(r[3]), "is_active": bool(r[4])} for r in rows]
+
+    def activate_plugin(self, name, user_id=None):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE plugins SET is_active = 1 WHERE name = ?", (name,))
+        conn.commit()
+        conn.close()
+
+    def deactivate_plugin(self, name, user_id=None):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE plugins SET is_active = 0 WHERE name = ?", (name,))
+        conn.commit()
+        conn.close()
 
     def delete_automation(self, auto_id):
         conn = sqlite3.connect(self.db_path)

@@ -1,12 +1,54 @@
-const { app, BrowserWindow, ipcMain, screen, Menu, systemPreferences, Tray, nativeImage } = require('electron');
+const { app, dialog, BrowserWindow, ipcMain, screen, Menu, systemPreferences, Tray, nativeImage } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const { spawn } = require('child_process');
+const fs = require('fs');
+
+// Prevent EPIPE errors on stdout and stderr from crashing the app (e.g., when parent process closes the pipe)
+process.stdout.on('error', (err) => {
+  if (err.code === 'EPIPE') {
+    // Ignore EPIPE errors
+  }
+});
+process.stderr.on('error', (err) => {
+  if (err.code === 'EPIPE') {
+    // Ignore EPIPE errors
+  }
+});
+process.on('uncaughtException', (err) => {
+  if (err.code === 'EPIPE') {
+    // Ignore EPIPE errors gracefully
+    return;
+  }
+  console.error('Uncaught Exception:', err);
+});
 
 let mainWindow;
 let orbWindow;
 let settingsWindow;
 let tray = null;
 let backendProcess = null;
+let backendPort = 8000;
+
+const net = require('net');
+
+function getFreePort(startPort = 8000) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        resolve(getFreePort(startPort + 1));
+      } else {
+        resolve(startPort);
+      }
+    });
+    server.listen(startPort, '0.0.0.0', () => {
+      server.close(() => {
+        resolve(startPort);
+      });
+    });
+  });
+}
 
 // ── Backend Auto-Launch ────────────────────────────────────────────────────
 function startBackend() {
@@ -29,7 +71,18 @@ function startBackend() {
     backendCwd = path.join(__dirname, '..');
   }
 
-  console.log(`[Backend] Starting: ${backendExe}`);
+  // Fallback: check if executable exists, show dialog if missing
+  const checkPath = isPackaged ? backendExe : backendArgs[0];
+  if (!fs.existsSync(checkPath)) {
+    console.error(`[Backend] Executable not found: ${checkPath}`);
+    dialog.showErrorBox(
+      'Backend Missing',
+      `The Python backend executable/launcher could not be found at:\n${checkPath}\n\nPlease build the backend first.`
+    );
+    return;
+  }
+
+  console.log(`[Backend] Starting on port ${backendPort}: ${backendExe}`);
 
   backendProcess = spawn(backendExe, backendArgs, {
     cwd: backendCwd,
@@ -39,7 +92,7 @@ function startBackend() {
       GGML_NO_METAL: '1',
       GGML_METAL_PATH_RESOURCES: '',
       GPT4ALL_BACKEND: 'cpu',
-      PORT: '8000',
+      PORT: backendPort.toString(),
     },
     detached: false,
     stdio: ['ignore', 'pipe', 'pipe']
@@ -156,6 +209,31 @@ function createTray() {
 }
 
 app.whenReady().then(async () => {
+  // Find a free port dynamically starting from 8000
+  backendPort = await getFreePort(8000);
+  console.log(`[Main] Using dynamic backend port: ${backendPort}`);
+
+  // Register synchronous IPC listener for renderer windows
+  ipcMain.on('get-backend-port', (event) => {
+    event.returnValue = backendPort;
+  });
+
+  // ---- Auto Update ----
+  if (!app.isPackaged) {
+    console.log('Skipping auto-updates in dev mode');
+  } else {
+    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.on('update-available', info => {
+      console.log('Update available:', info.version);
+    });
+    autoUpdater.on('update-downloaded', info => {
+      console.log('Update downloaded; will install now');
+      autoUpdater.quitAndInstall();
+    });
+    autoUpdater.on('error', err => {
+      console.error('Auto-updater error:', err);
+    });
+  }
     // Start the Python backend first (auto-restarts on crash)
     startBackend();
 
@@ -311,6 +389,66 @@ ipcMain.on('open-settings-window', () => { if (settingsWindow) { settingsWindow.
 ipcMain.on('close-settings-window', () => { if (settingsWindow) settingsWindow.hide(); });
 ipcMain.on('settings-updated', () => {
     if (orbWindow && !orbWindow.isDestroyed()) orbWindow.webContents.send('refresh-settings');
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('refresh-settings');
+});
+
+ipcMain.on('trigger-action', (event, action) => {
+    if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents.send('execute-action', action);
+    }
+});
+
+// ---- Persona IPC Handlers ----
+const { getPersonas, savePersona, deletePersona, setActivePersona, getActivePersona } = require('./src/services/store');
+
+ipcMain.handle('persona-get-all', async () => {
+  try {
+    return await getPersonas();
+  } catch (e) {
+    console.error('Error getting personas', e);
+    return [];
+  }
+});
+
+ipcMain.handle('persona-get-active', async () => {
+  try {
+    return await getActivePersona();
+  } catch (e) {
+    console.error('Error getting active persona', e);
+    return null;
+  }
+});
+
+ipcMain.handle('persona-set-active', async (event, id) => {
+  try {
+    await setActivePersona(id);
+    return true;
+  } catch (e) {
+    console.error('Error setting active persona', e);
+    return false;
+  }
+});
+
+ipcMain.handle('persona-save', async (event, persona) => {
+  try {
+    await savePersona(persona);
+    return true;
+  } catch (e) {
+    console.error('Error saving persona', e);
+    return false;
+  }
+});
+
+ipcMain.handle('persona-delete', async (event, id) => {
+  try {
+    await deletePersona(id);
+    return true;
+  } catch (e) {
+    console.error('Error deleting persona', e);
+    return false;
+  }
 });
 
 ipcMain.on('set-orb-status', (event, status) => {
@@ -327,4 +465,66 @@ ipcMain.on('set-orb-status', (event, status) => {
     icon = icon.resize({ width: 18, height: 18 });
     icon.setTemplateImage(true);
     tray.setImage(icon);
+});
+
+ipcMain.handle('run-command', async (event, cmd) => {
+  const { exec } = require('child_process');
+  
+  // Security Sanitization
+  const lower = cmd.toLowerCase().trim();
+  const dangerousPatterns = [
+    /\brm\b/,        // rm command
+    /\bsudo\b/,      // privilege escalation
+    /\bcurl\b/,      // downloading scripts
+    /\bwget\b/,      // downloading scripts
+    /\bchmod\b/,     // permission modification
+    /\bchown\b/,     // ownership modification
+    /[>|]/           // redirection or piping
+  ];
+
+  const isDangerous = dangerousPatterns.some(pattern => pattern.test(lower));
+  if (isDangerous) {
+    return {
+      success: false,
+      error: "Security Exception: This command contains restricted patterns (rm, sudo, curl, wget, chmod, redirection, or piping) and has been blocked for safety.",
+      stdout: "",
+      stderr: ""
+    };
+  }
+
+  return new Promise((resolve) => {
+    exec(cmd, (error, stdout, stderr) => {
+      if (error) {
+        resolve({ success: false, error: error.message, stdout, stderr });
+      } else {
+        resolve({ success: true, stdout, stderr });
+      }
+    });
+  });
+});
+
+// Propose commands based on simple keyword matching
+ipcMain.handle('propose-commands', async (event, userRequest) => {
+  const lower = userRequest.toLowerCase();
+  const suggestions = [];
+  if (lower.includes('install python')) {
+    suggestions.push('brew install python');
+  }
+  if (lower.includes('list') && lower.includes('file')) {
+    suggestions.push('ls -la');
+  }
+  if (lower.includes('show') && lower.includes('directory')) {
+    suggestions.push('pwd');
+  }
+  if (lower.includes('who am i') || lower.includes('identity')) {
+    suggestions.push('whoami');
+  }
+  if (lower.includes('delete') && lower.includes('file')) {
+    suggestions.push('rm <filepath>');
+  }
+  // fallback: return all allowed commands
+  if (suggestions.length === 0) {
+    suggestions.push(...['ls -la', 'pwd', 'whoami', 'brew install python', 'rm <filepath>']);
+  }
+  return suggestions;
 });

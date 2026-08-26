@@ -23,7 +23,7 @@ RESTART_COUNT=0
 
 while true; do
     echo "[$(date '+%H:%M:%S')] Starting server (attempt #$((RESTART_COUNT + 1)))..."
-    python main.py >> /tmp/backend.log 2>&1
+    python main.py
     EXIT_CODE=$?
     RESTART_COUNT=$((RESTART_COUNT + 1))
     echo "[$(date '+%H:%M:%S')] Server exited (code=$EXIT_CODE). Restarting in 3s..."

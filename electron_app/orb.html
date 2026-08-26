@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:8000 ws://127.0.0.1:8000 https://*.googleapis.com; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://*.googleapis.com; img-src 'self' http://127.0.0.1:* data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <style>
@@ -311,7 +311,9 @@
 <body id="main-body">
     <div id="orb-container" class="orb-wrapper">
         <div class="aura"></div><div class="aura"></div><div class="aura"></div>
-        <div class="main-orb" id="orb-button"></div>
+        <div class="main-orb" id="orb-button">
+            <img id="pet-avatar" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%; display: none; pointer-events: none;">
+        </div>
         <div class="waveform" id="waveform">
             <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
         </div>
@@ -351,6 +353,48 @@
         
         let isListening = false;
         
+        const petAvatar = document.getElementById('pet-avatar');
+
+        let currentOrbState = 'idle';
+        function updateOrbVisualState(state) {
+            if (!petAvatar) return;
+            currentOrbState = state;
+            
+            const specificUrl = `${window.aiBackend.baseUrl}/pet/${state}?t=${Date.now()}`;
+            const fallbackUrl = `${window.aiBackend.baseUrl}/avatar?t=${Date.now()}`;
+            
+            const img = new Image();
+            img.onload = function() {
+                petAvatar.src = specificUrl;
+                petAvatar.style.display = 'block';
+            };
+            img.onerror = function() {
+                const fallbackImg = new Image();
+                fallbackImg.onload = function() {
+                    petAvatar.src = fallbackUrl;
+                    petAvatar.style.display = 'block';
+                };
+                fallbackImg.onerror = function() {
+                    petAvatar.style.display = 'none';
+                };
+                fallbackImg.src = fallbackUrl;
+            };
+            img.src = specificUrl;
+        }
+
+        const originalSetOrbStatus = window.aiBackend.setOrbStatus;
+        window.aiBackend.setOrbStatus = function(status) {
+            if (originalSetOrbStatus) originalSetOrbStatus(status);
+            updateOrbVisualState(status);
+        };
+
+        window.aiBackend.onSettingsUpdated(() => {
+            updateOrbVisualState(currentOrbState);
+        });
+        
+        // Initial setup trigger
+        updateOrbVisualState('idle');
+        
         document.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             contextMenu.classList.add('visible');
@@ -378,7 +422,11 @@
         orbBtn.addEventListener('click', () => {
             if (isListening) {
                 stopRecording();
-            } else if (!isAgentSpeaking) {
+                if (recognition) recognition.stop();
+            } else {
+                if (isAgentSpeaking) {
+                    stopSpeaking();
+                }
                 startRecording();
             }
         });
@@ -392,6 +440,7 @@
         let audioChunks = [];
         let recognition = null;
         let isAgentSpeaking = false;
+        let activeAudio = null;
         let uiStrings = {};
 
         async function loadLocales() {
@@ -595,7 +644,12 @@
 
         async function startBackendSTT() {
             try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
                 navigator.mediaDevices.getUserMedia({ audio: true, video: false })
                 .then(stream => {
                     isListening = true;
@@ -655,7 +709,9 @@
                 scriptProcessor.disconnect();
                 source.disconnect();
             }
-            if (audioContext) audioContext.close();
+            if (audioContext && audioContext.state === 'running') {
+                audioContext.suspend();
+            }
 
             if (!audioBuffer || audioBuffer.length === 0) {
                 statusText.innerText = localize("status_no_audio");
@@ -683,7 +739,7 @@
                     formData.append('api_key', settings.apiKey);
                 }
 
-                const response = await fetch('http://127.0.0.1:8000/transcribe', {
+                const response = await fetch(`${window.aiBackend.baseUrl}/transcribe`, {
                     method: 'POST',
                     body: formData
                 });
@@ -732,20 +788,20 @@
             }
         }
 
-        orbBtn.addEventListener('click', () => {
-            if (isListening) {
-                stopRecording();
-                if (recognition) recognition.stop();
-            } else {
-                startRecording();
-            }
-        });
-        
         let ws;
         let activeWSHandler = null; // Track active handler to prevent duplicate listeners
+        let pendingQuery = null; // Buffer queries when WS drops mid-run
         function setupWebSocket() {
             const token = "localhost";
-            ws = new WebSocket(`ws://127.0.0.1:8000/ws/${token}`);
+            ws = new WebSocket(`${window.aiBackend.wsUrl}/ws/${token}`);
+            ws.onopen = () => {
+                console.log("Orb WS Connected");
+                if (pendingQuery) {
+                    const queryToSend = pendingQuery;
+                    pendingQuery = null;
+                    finishVoiceInteraction(queryToSend);
+                }
+            };
             ws.onclose = () => setTimeout(setupWebSocket, 3000);
             ws.onerror = (e) => console.error("Orb WS Error:", e);
         }
@@ -803,6 +859,9 @@
                             if (data.payload.action === "deep_research_start") {
                                 statusText.innerText = localize("status_researching");
                             }
+                            if (data.payload.action === "visual_interpreter" || data.payload.action === "object_recognition") {
+                                window.aiBackend.triggerAction(data.payload.action);
+                            }
                         } else if (data.type === "chat_done") {
                             ws.removeEventListener('message', handleWSMessage);
                             activeWSHandler = null;
@@ -839,8 +898,9 @@
                     activeWSHandler = handleWSMessage;
                     ws.addEventListener('message', handleWSMessage);
                 } else {
+                    pendingQuery = query;
+                    statusText.innerText = "RECONNECTING...";
                     setupWebSocket();
-                    throw new Error("WS Disconnected");
                 }
             } catch (e) { 
                 console.error(e);
@@ -880,6 +940,12 @@
             // Final check: Does it contain any actual speech-worthy content?
             if (!cleanText || cleanText.length < 2) return;
 
+            // Stop wake word detection before speaking to prevent self-triggering from speakers
+            if (wakeWordRecognizer) {
+                try { wakeWordRecognizer.stop(); } catch(e){}
+                wakeWordRecognizer = null;
+            }
+
             const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
             const lang = settings.lang || "en-US";
 
@@ -888,7 +954,7 @@
                 try {
                     isAgentSpeaking = true;
                     console.log("Using Backend TTS for Sinhala...");
-                    const response = await fetch('http://127.0.0.1:8000/tts', {
+                    const response = await fetch(`${window.aiBackend.baseUrl}/tts`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ text: cleanText, language: 'si' })
@@ -899,9 +965,10 @@
                     const audioBlob = await response.blob();
                     const audioUrl = URL.createObjectURL(audioBlob);
                     const audio = new Audio(audioUrl);
+                    activeAudio = audio;
                     
-                    audio.onplay = () => { isAgentSpeaking = true; };
-                    audio.onended = () => { isAgentSpeaking = false; URL.revokeObjectURL(audioUrl); startWakeWordDetection(); };
+                    audio.onplay = () => { isAgentSpeaking = true; window.aiBackend.setOrbStatus('speaking'); };
+                    audio.onended = () => { isAgentSpeaking = false; activeAudio = null; window.aiBackend.setOrbStatus('idle'); URL.revokeObjectURL(audioUrl); startWakeWordDetection(); };
                     audio.play();
                     return;
                 } catch (err) {
@@ -916,11 +983,31 @@
             utterance.rate = 1.0;
             utterance.pitch = 1.1;
 
-            utterance.onstart = () => { isAgentSpeaking = true; };
-            utterance.onend = () => { isAgentSpeaking = false; startWakeWordDetection(); };
-            utterance.onerror = () => { isAgentSpeaking = false; startWakeWordDetection(); };
+            utterance.onstart = () => { isAgentSpeaking = true; window.aiBackend.setOrbStatus('speaking'); };
+            utterance.onend = () => { isAgentSpeaking = false; window.aiBackend.setOrbStatus('idle'); startWakeWordDetection(); };
+            utterance.onerror = () => { isAgentSpeaking = false; window.aiBackend.setOrbStatus('idle'); startWakeWordDetection(); };
 
             window.speechSynthesis.speak(utterance);
+        }
+
+        function stopSpeaking() {
+            if (ws && activeWSHandler) {
+                ws.removeEventListener('message', activeWSHandler);
+                activeWSHandler = null;
+            }
+            if (activeAudio) {
+                try {
+                    activeAudio.pause();
+                } catch (e) {}
+                activeAudio = null;
+            }
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+            isAgentSpeaking = false;
+            window.aiBackend.setOrbStatus('idle');
+            statusText.innerText = localize("status_idle");
+            startWakeWordDetection();
         }
 
         window.addEventListener('load', () => {

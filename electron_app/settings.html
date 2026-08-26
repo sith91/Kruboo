@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:8000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:* http://127.0.0.1:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         :root { --accent: #6b4cff; --bg: rgba(10, 10, 10, 0.8); --border: rgba(255, 255, 255, 0.1); }
         body { background: transparent; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Inter', sans-serif; color: #f0f0f5; -webkit-user-select: none; }
-        .settings-card { width: 480px; background: var(--bg); backdrop-filter: blur(50px); -webkit-backdrop-filter: blur(50px); border: 1px solid var(--border); border-radius: 28px; padding: 30px; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.9); display: flex; flex-direction: column; gap: 20px; -webkit-app-region: drag; }
-        .header { display: flex; justify-content: space-between; align-items: center; }
-        .header h1 { font-size: 20px; font-weight: 500; margin: 0; letter-spacing: -0.5px; }
+        .settings-card { width: 480px; background: var(--bg); backdrop-filter: blur(50px); -webkit-backdrop-filter: blur(50px); border: 1px solid var(--border); border-radius: 28px; padding: 30px; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.9); display: flex; flex-direction: column; gap: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; -webkit-app-region: drag; }
+        .header h1 { font-size: 20px; font-weight: 500; margin: 0; letter-spacing: -0.5px; -webkit-app-region: drag; }
         .close-btn { background: rgba(255,255,255,0.05); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; -webkit-app-region: no-drag; }
         
-        .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; -webkit-app-region: no-drag; }
+        .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
         .tab-btn { background: none; border: none; color: #777; cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 0; position: relative; transition: color 0.2s; }
         .tab-btn.active { color: white; }
         .tab-btn.active::after { content: ''; position: absolute; bottom: -11px; left: 0; width: 100%; height: 2.5px; background: var(--accent); border-radius: 2px; }
@@ -33,10 +33,62 @@
         .color-swatch.active { border-color: white; transform: scale(1.1); }
 
         .identity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .upload-card { border: 2px dashed rgba(255,255,255,0.1); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; }
-        .upload-card:hover { border-color: var(--accent); background: rgba(107, 76, 255, 0.05); }
-        .upload-card span { font-size: 24px; }
-        .upload-card p { margin: 0; font-size: 10px; color: #777; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .upload-card { 
+            position: relative;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.08); 
+            border-radius: 16px; 
+            padding: 24px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 8px; 
+            cursor: pointer; 
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); 
+            box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.01);
+        }
+        .upload-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(107, 76, 255, 0.1), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .upload-card:hover { 
+            border-color: var(--accent); 
+            background: rgba(107, 76, 255, 0.03); 
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(107, 76, 255, 0.15), inset 0 0 16px rgba(107, 76, 255, 0.05);
+        }
+        .upload-card:hover::before {
+            opacity: 1;
+        }
+        .upload-card span { 
+            font-size: 26px; 
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.2)); 
+            z-index: 1;
+            transition: transform 0.3s ease;
+        }
+        .upload-card:hover span {
+            transform: scale(1.1);
+        }
+        .upload-card p { 
+            margin: 0; 
+            font-size: 9px; 
+            color: #888; 
+            font-weight: 600; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            z-index: 1;
+            transition: color 0.3s ease;
+        }
+        .upload-card:hover p {
+            color: #fff;
+            text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+        }
 
         .plugin-item { background: rgba(255,255,255,0.04); padding: 12px 16px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
         .plugin-item button { background: var(--accent); border: none; color: white; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; }
@@ -72,12 +124,14 @@
         </header>
 
         <nav class="tabs">
-            <button class="tab-btn active" onclick="switchTab('general')" data-i18n="tab_general">General</button>
-            <button class="tab-btn" onclick="switchTab('identity')" data-i18n="tab_identity">Identity</button>
-            <button class="tab-btn" onclick="switchTab('connections')" data-i18n="tab_connections">Links</button>
-            <button class="tab-btn" onclick="switchTab('ai')" data-i18n="tab_ai">Engine</button>
-            <button class="tab-btn" onclick="switchTab('memory')" data-i18n="tab_memory">Memory</button>
-            <button class="tab-btn" onclick="switchTab('automations')">Automations</button>
+            <button class="tab-btn active" onclick="switchTab('general', this)" data-i18n="tab_general">General</button>
+            <button class="tab-btn" onclick="switchTab('identity', this)" data-i18n="tab_identity">Identity</button>
+            <button class="tab-btn" onclick="switchTab('connections', this)" data-i18n="tab_connections">Links</button>
+            <button class="tab-btn" onclick="switchTab('devices', this)">Devices</button>
+            <button class="tab-btn" onclick="switchTab('iot', this)">Smart Home</button>
+            <button class="tab-btn" onclick="switchTab('ai', this)" data-i18n="tab_ai">Engine</button>
+            <button class="tab-btn" onclick="switchTab('memory', this)" data-i18n="tab_memory">Memory</button>
+            <button class="tab-btn" onclick="switchTab('automations', this)">Automations</button>
         </nav>
 
         <!-- General Tab -->
@@ -108,6 +162,24 @@
                         <option value="en-US">English (US)</option>
                         <option value="si-LK">Sinhala</option>
                     </select>
+                    <label>Persona / Feeling</label>
+                    <select id="feeling-selection">
+                        <option value="siri">Siri (Concise & Voice-Optimized)</option>
+                        <option value="professional">Professional</option>
+                        <option value="witty">Witty</option>
+                        <option value="friendly">Friendly</option>
+                    </select>
+                </div>
+            </div>
+            <div class="section">
+                <div class="section-title">Workspace Permissions</div>
+                <div class="control-group">
+                    <label>Sandboxed Workspace Folder</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 5px;">
+                        <input type="text" id="allowed-workspace-dir" placeholder="e.g. /Users/sithija/Workspace" style="flex: 1; margin: 0;">
+                        <button onclick="saveWorkspaceDir()" class="save-btn" style="margin: 0; padding: 10px 15px; border-radius: 12px; font-size: 12px; background: var(--accent); color: white; line-height: 1;">Save</button>
+                    </div>
+                    <span style="font-size: 10px; color: #888; display: block; line-height: 1.3;">The directory the assistant is allowed to search, list, read, create, and open files in. Defaults to the internal "workspace" folder if blank.</span>
                 </div>
             </div>
         </div>
@@ -116,7 +188,7 @@
         <div id="identity" class="tab-content">
             <div class="identity-grid">
                 <div class="upload-card" id="avatar-btn">
-                    <span>🖼️</span>
+                    <span>👤</span>
                     <p data-i18n="settings_avatar">Avatar</p>
                 </div>
                 <div class="upload-card" id="voice-btn">
@@ -128,45 +200,35 @@
             <input type="file" id="voice-input" style="display:none" accept="audio/*">
 
             <div class="section" style="margin-top:20px">
-                <div class="section-title" data-i18n="settings_voice_engine">Voice Generation</div>
-                <div class="control-group">
-                    <label data-i18n="settings_v_mode">Synthesis Engine</label>
-                    <select id="voice-mode">
-                        <option value="offline">Offline (Private/Local)</option>
-                        <option value="neural">Neural (ElevenLabs API)</option>
-                    </select>
-                    <label data-i18n="settings_eleven_key">ElevenLabs Key</label>
-                    <input type="password" id="eleven-key" placeholder="eb-...">
+                <div class="section-title">Character & Pet Animations</div>
+                <div class="identity-grid" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="upload-card" id="pet-idle-btn">
+                        <span>😴</span>
+                        <p style="font-size:9px">Idle</p>
+                    </div>
+                    <div class="upload-card" id="pet-listening-btn">
+                        <span>🎙️</span>
+                        <p style="font-size:9px">Listening</p>
+                    </div>
+                    <div class="upload-card" id="pet-thinking-btn">
+                        <span>🧠</span>
+                        <p style="font-size:9px">Thinking</p>
+                    </div>
+                    <div class="upload-card" id="pet-speaking-btn">
+                        <span>🔊</span>
+                        <p style="font-size:9px">Speaking</p>
+                    </div>
                 </div>
+                <input type="file" id="pet-input-idle" style="display:none" accept="image/gif,image/png,image/jpeg,image/apng">
+                <input type="file" id="pet-input-listening" style="display:none" accept="image/gif,image/png,image/jpeg,image/apng">
+                <input type="file" id="pet-input-thinking" style="display:none" accept="image/gif,image/png,image/jpeg,image/apng">
+                <input type="file" id="pet-input-speaking" style="display:none" accept="image/gif,image/png,image/jpeg,image/apng">
             </div>
         </div>
 
         <!-- Connections Tab -->
         <div id="connections" class="tab-content">
-            <div class="section-title" data-i18n="settings_active_links">Active App Links</div>
-            <div class="connection-card">
-                <div class="conn-info">
-                    <div class="conn-icon gmail">G</div>
-                    <div class="conn-details">
-                        <h4>Gmail</h4>
-                        <p id="gmail-status">Disconnected</p>
-                    </div>
-                </div>
-                <button id="connect-gmail-btn" class="connect-btn">Connect</button>
-            </div>
-
-            <div class="connection-card">
-                <div class="conn-info">
-                    <div class="conn-icon calendar">C</div>
-                    <div class="conn-details">
-                        <h4>Google Calendar</h4>
-                        <p id="calendar-status">Disconnected</p>
-                    </div>
-                </div>
-                <button id="connect-calendar-btn" class="connect-btn">Connect</button>
-            </div>
-            
-            <div class="section-title" style="margin-top:20px" data-i18n="settings_plugin_lib">Skill Library</div>
+            <div class="section-title">Core Plugins</div>
             <div class="plugin-item">
                 <span>🌐 Web Browser Agent</span>
                 <button data-i18n="settings_installed">Active</button>
@@ -175,9 +237,28 @@
                 <span>📂 File Manager</span>
                 <button data-i18n="settings_installed">Active</button>
             </div>
-            
-            <!-- Link New Device (WhatsApp style) -->
-            <div class="section-title" style="margin-top:20px">Device Pairing</div>
+
+            <div class="section-title" style="margin-top:20px">Google Plugins (Connectors)</div>
+            <div class="plugin-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="display: flex; align-items: center; gap: 8px;">📧 Gmail Plugin</span>
+                    <button id="connect-gmail-btn" class="connect-btn" style="margin: 0; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; background: var(--accent); color: white; border: none;">Connect</button>
+                </div>
+                <p id="gmail-status" style="font-size: 11px; color: #888; margin: 0; padding-left: 2px;">Disconnected</p>
+            </div>
+
+            <div class="plugin-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="display: flex; align-items: center; gap: 8px;">📅 Google Calendar Plugin</span>
+                    <button id="connect-calendar-btn" class="connect-btn" style="margin: 0; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; background: var(--accent); color: white; border: none;">Connect</button>
+                </div>
+                <p id="calendar-status" style="font-size: 11px; color: #888; margin: 0; padding-left: 2px;">Disconnected</p>
+            </div>
+        </div>
+
+        <!-- Devices Tab -->
+        <div id="devices" class="tab-content">
+            <div class="section-title">Device Pairing</div>
             <div class="section" style="text-align: center; background: white; padding: 20px;">
                 <p style="color: #666; font-size: 12px; margin-bottom: 15px; font-weight: 500;">Scan this from your mobile app to link instantly</p>
                 <div id="qr-container" style="background: white; padding: 10px; border-radius: 12px; display: inline-block;">
@@ -187,6 +268,65 @@
                     </div>
                 </div>
                 <div style="margin-top: 10px; font-size: 11px; color: #6b4cff; font-weight: 600;" id="pairing-token-text"></div>
+            </div>
+        </div>
+
+        <!-- Smart Home / IoT Tab -->
+        <div id="iot" class="tab-content">
+            <div class="section-title">Smart Home Connectors</div>
+            
+            <!-- Tasmota Connector -->
+            <div class="plugin-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="display: flex; align-items: center; gap: 8px; font-weight: 600;">🔌 Tasmota / Sonoff Smart Plug</span>
+                    <button id="connect-tasmota-btn" class="connect-btn" onclick="saveIoTConfig('tasmota')" style="margin: 0; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; background: var(--accent); color: white; border: none;">Connect</button>
+                </div>
+                <p style="font-size: 11px; color: #888; margin: 0;">Connect your local Tasmota-flashed smart plugs and switches.</p>
+                <div class="control-group" style="margin-top: 4px;">
+                    <label style="font-size: 11px;">Device IP Address</label>
+                    <input type="text" id="iot-tasmota-ip" placeholder="e.g. 192.168.1.50" style="padding: 6px 10px; font-size: 12px;">
+                </div>
+            </div>
+
+            <!-- WLED Connector -->
+            <div class="plugin-item" style="flex-direction: column; align-items: stretch; gap: 8px; margin-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="display: flex; align-items: center; gap: 8px; font-weight: 600;">🌈 WLED Strip Lights</span>
+                    <button id="connect-wled-btn" class="connect-btn" onclick="saveIoTConfig('wled')" style="margin: 0; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; background: var(--accent); color: white; border: none;">Connect</button>
+                </div>
+                <p style="font-size: 11px; color: #888; margin: 0;">Control ESP32-based addressable LED strip lights locally.</p>
+                <div class="control-group" style="margin-top: 4px;">
+                    <label style="font-size: 11px;">WLED IP Address</label>
+                    <input type="text" id="iot-wled-ip" placeholder="e.g. 192.168.1.52" style="padding: 6px 10px; font-size: 12px;">
+                </div>
+            </div>
+
+            <!-- Philips Hue Connector -->
+            <div class="plugin-item" style="flex-direction: column; align-items: stretch; gap: 8px; margin-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="display: flex; align-items: center; gap: 8px; font-weight: 600;">💡 Philips Hue Bridge</span>
+                    <button id="connect-hue-btn" class="connect-btn" onclick="saveIoTConfig('philips_hue')" style="margin: 0; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; background: var(--accent); color: white; border: none;">Connect</button>
+                </div>
+                <p style="font-size: 11px; color: #888; margin: 0;">Connect your Hue Bridge for premium local lighting control.</p>
+                <div class="control-group" style="margin-top: 4px;">
+                    <label style="font-size: 11px;">Bridge IP Address</label>
+                    <input type="text" id="iot-hue-ip" placeholder="e.g. 192.168.1.40" style="padding: 6px 10px; font-size: 12px;">
+                </div>
+            </div>
+
+            <!-- Tuya Connector -->
+            <div class="plugin-item" style="flex-direction: column; align-items: stretch; gap: 8px; margin-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="display: flex; align-items: center; gap: 8px; font-weight: 600;">🏠 Tuya / Smart Life (Cloud)</span>
+                    <button id="connect-tuya-btn" class="connect-btn" onclick="saveIoTConfig('tuya')" style="margin: 0; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; background: var(--accent); color: white; border: none;">Connect</button>
+                </div>
+                <p style="font-size: 11px; color: #888; margin: 0;">Connect global cloud-based Tuya IoT devices.</p>
+                <div class="control-group" style="margin-top: 4px;">
+                    <label style="font-size: 11px;">Access ID / Client ID</label>
+                    <input type="text" id="iot-tuya-id" placeholder="Access ID" style="padding: 6px 10px; font-size: 12px; margin-bottom: 8px;">
+                    <label style="font-size: 11px;">Access Secret</label>
+                    <input type="password" id="iot-tuya-secret" placeholder="Access Secret Key" style="padding: 6px 10px; font-size: 12px;">
+                </div>
             </div>
         </div>
 
@@ -206,6 +346,7 @@
                             <option value="claude-3">Claude 3.5 Sonnet (Anthropic)</option>
                             <option value="deepseek">DeepSeek V3 (High Efficiency)</option>
                             <option value="grok">Grok 2 (X.AI)</option>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Google)</option>
                         </optgroup>
                     </select>
                     <label data-i18n="settings_api_key">Provider API Key</label>
@@ -220,6 +361,28 @@
                         <option value="local">Vosk (Local - Offline)</option>
                         <option value="whisper">OpenAI Whisper (Cloud - Requires API Key)</option>
                         <option value="browser">Web Speech API (Browser Native - Free)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="section" style="margin-top:20px">
+                <div class="section-title" data-i18n="settings_voice_engine">Voice Generation (TTS)</div>
+                <div class="control-group">
+                    <label data-i18n="settings_v_mode">Synthesis Engine</label>
+                    <select id="voice-mode">
+                        <option value="offline">Offline (Private/Local)</option>
+                        <option value="neural">Neural (ElevenLabs API)</option>
+                    </select>
+                    <label data-i18n="settings_eleven_key">ElevenLabs Key</label>
+                    <input type="password" id="eleven-key" placeholder="eb-...">
+                </div>
+            </div>
+            <div class="section" style="margin-top:20px">
+                <div class="section-title">Vision Settings</div>
+                <div class="control-group">
+                    <label>Object Recognition Mode</label>
+                    <select id="object-recognition-mode">
+                        <option value="cloud">Cloud (LLM Configured)</option>
+                        <option value="local">Local (On-Device MobileNet-SSD)</option>
                     </select>
                 </div>
             </div>
@@ -261,6 +424,13 @@
                 <div class="section-title">New Automation</div>
                 <div class="control-group">
                     <input type="text" id="auto-name" placeholder="Rule Name (e.g. Battery Saver)">
+        <!-- Device selector -->
+        <label for="auto-device" class="form-label" style="margin-top:8px;">Device</label>
+        <select id="auto-device" class="form-select" style="margin-bottom:12px;">
+          <option value="both" selected>Both (Desktop & Mobile)</option>
+          <option value="desktop">Desktop only</option>
+          <option value="mobile">Mobile only</option>
+        </select>
                     <select id="auto-trigger" onchange="toggleTriggerFields()">
                         <option value="time">Time of Day</option>
                         <option value="battery">Battery Level</option>
@@ -329,18 +499,56 @@
         const savedSettings = JSON.parse(localStorage.getItem('nexus-settings')) || {
             name: 'Kruuboo', lang: 'en-US', model: 'llama-3', feeling: 'siri', 
             apiKey: '', elevenKey: '', voiceMode: 'offline', voiceActivation: false,
-            sttEngine: 'local'
+            sttEngine: 'local', objectRecognitionMode: 'cloud'
         };
 
         // UI Fill
         document.getElementById('assistant-name').value = savedSettings.name || '';
         document.getElementById('lang-selection').value = savedSettings.lang || 'en-US';
+        document.getElementById('feeling-selection').value = savedSettings.feeling || 'siri';
         document.getElementById('llm-model').value = savedSettings.model || 'gpt-4';
         document.getElementById('api-key').value = savedSettings.apiKey || '';
         document.getElementById('eleven-key').value = savedSettings.elevenKey || '';
         document.getElementById('voice-mode').value = savedSettings.voiceMode || 'offline';
         document.getElementById('voice-activation').checked = savedSettings.voiceActivation || false;
         document.getElementById('stt-engine').value = savedSettings.sttEngine || 'local';
+        document.getElementById('object-recognition-mode').value = savedSettings.objectRecognitionMode || 'cloud';
+
+        // Load Workspace folder setting from FastAPI backend
+        async function loadWorkspaceDir() {
+            try {
+                const res = await fetch(`${window.aiBackend.baseUrl}/settings/workspace`);
+                const data = await res.json();
+                if (data && data.allowed_workspace_dir) {
+                    document.getElementById('allowed-workspace-dir').value = data.allowed_workspace_dir;
+                }
+            } catch (err) {
+                console.error("Failed to load workspace setting:", err);
+            }
+        }
+        loadWorkspaceDir();
+
+        // Save Workspace folder setting to FastAPI backend
+        async function saveWorkspaceDir() {
+            const dirInput = document.getElementById('allowed-workspace-dir').value.trim();
+            try {
+                const res = await fetch(`${window.aiBackend.baseUrl}/settings/workspace`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ allowed_workspace_dir: dirInput })
+                });
+                const result = await res.json();
+                if (result.status === 'success') {
+                    alert(`Workspace directory successfully updated to: ${result.allowed_workspace_dir || 'Default internal workspace'}`);
+                    document.getElementById('allowed-workspace-dir').value = result.allowed_workspace_dir || '';
+                } else {
+                    alert('Failed to save directory permission.');
+                }
+            } catch (err) {
+                console.error("Failed to save workspace setting:", err);
+                alert('Connection error. Failed to save directory permission.');
+            }
+        }
 
         // i18n Engine
         async function loadLocales(lang) {
@@ -357,14 +565,14 @@
 
         document.getElementById('lang-selection').onchange = (e) => loadLocales(e.target.value);
 
-        function switchTab(id) {
+        function switchTab(id, btn) {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(id).classList.add('active');
-            event.currentTarget.classList.add('active');
+            if (btn) btn.classList.add('active');
         }
 
-        document.getElementById('save-settings').onclick = () => {
+        document.getElementById('save-settings').onclick = async () => {
             const data = {
                 name: document.getElementById('assistant-name').value,
                 lang: document.getElementById('lang-selection').value,
@@ -373,16 +581,183 @@
                 elevenKey: document.getElementById('eleven-key').value,
                 voiceMode: document.getElementById('voice-mode').value,
                 voiceActivation: document.getElementById('voice-activation').checked,
-                sttEngine: document.getElementById('stt-engine').value
+                sttEngine: document.getElementById('stt-engine').value,
+                objectRecognitionMode: document.getElementById('object-recognition-mode').value,
+                feeling: document.getElementById('feeling-selection').value
             };
+            // Save generic settings
             localStorage.setItem('nexus-settings', JSON.stringify(data));
             window.aiBackend.notifySettingsUpdated();
+
+            // ---- Persona handling ----
+            const persona = {
+                id: document.getElementById('persona-select')?.value || Date.now().toString(),
+                name: document.getElementById('assistant-name').value,
+                language: document.getElementById('lang-selection').value,
+                avatarPath: document.getElementById('avatar-input').files[0]?.path || '',
+                voicePath: document.getElementById('voice-input').files[0]?.path || ''
+            };
+            // Save or update persona
+            await window.aiBackend.savePersona(persona);
+            // Set as active persona
+            await window.aiBackend.setActivePersona(persona.id);
+
             window.aiBackend.closeSettings();
         };
+
+        // Load personas into UI
+        async function loadPersonas() {
+            const personas = await window.aiBackend.getPersonas();
+            const select = document.createElement('select');
+            select.id = 'persona-select';
+            select.style.marginTop = '8px';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '-- Select Persona --';
+            select.appendChild(placeholder);
+            personas.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                select.appendChild(opt);
+            });
+            const section = document.querySelector('.section[data-i18n="settings_persona"]')?.parentNode;
+            if (section) {
+                section.insertBefore(select, section.firstChild);
+            }
+            const active = await window.aiBackend.getActivePersona();
+            if (active) {
+                document.getElementById('persona-select').value = active.id;
+                document.getElementById('assistant-name').value = active.name;
+                document.getElementById('lang-selection').value = active.language;
+            }
+            document.getElementById('persona-select').addEventListener('change', async (e) => {
+                const selected = personas.find(p => p.id === e.target.value);
+                if (selected) {
+                    document.getElementById('assistant-name').value = selected.name;
+                    document.getElementById('lang-selection').value = selected.language;
+                }
+            });
+        }
+        loadPersonas();
 
         document.getElementById('close-btn').onclick = () => window.aiBackend.closeSettings();
         document.getElementById('avatar-btn').onclick = () => document.getElementById('avatar-input').click();
         document.getElementById('voice-btn').onclick = () => document.getElementById('voice-input').click();
+
+        document.getElementById('voice-input').onchange = async function() {
+            const file = this.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const res = await fetch(`${window.aiBackend.baseUrl}/upload_voice`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert("Voice sample uploaded successfully for cloning!");
+                }
+            } catch (err) {
+                console.error("Voice upload failed:", err);
+            }
+        };
+
+        function loadAvatar() {
+            const imgUrl = `${window.aiBackend.baseUrl}/avatar?t=${Date.now()}`;
+            const img = new Image();
+            img.onload = function() {
+                const btn = document.getElementById(`avatar-btn`);
+                if (btn) {
+                    btn.innerHTML = `
+                        <img src="${imgUrl}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover; z-index: 1;">
+                        <p style="font-size:9px; z-index: 1;">AVATAR</p>
+                    `;
+                }
+            };
+            img.onerror = function() {
+                console.log("No saved user avatar.");
+            };
+            img.src = imgUrl;
+        }
+        loadAvatar();
+
+        document.getElementById('avatar-input').onchange = async function() {
+            const file = this.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const res = await fetch(`${window.aiBackend.baseUrl}/upload_avatar`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert("Avatar uploaded successfully!");
+                    loadAvatar();
+                    window.aiBackend.notifySettingsUpdated();
+                }
+            } catch (err) {
+                console.error("Avatar upload failed:", err);
+            }
+        };
+
+        // Pet Avatar Actions
+        document.getElementById('pet-idle-btn').onclick = () => document.getElementById('pet-input-idle').click();
+        document.getElementById('pet-listening-btn').onclick = () => document.getElementById('pet-input-listening').click();
+        document.getElementById('pet-thinking-btn').onclick = () => document.getElementById('pet-input-thinking').click();
+        document.getElementById('pet-speaking-btn').onclick = () => document.getElementById('pet-input-speaking').click();
+
+        function loadPetAnimations() {
+            const states = ['idle', 'listening', 'thinking', 'speaking'];
+            states.forEach(state => {
+                const imgUrl = `${window.aiBackend.baseUrl}/pet/${state}?t=${Date.now()}`;
+                const img = new Image();
+                img.onload = function() {
+                    const btn = document.getElementById(`pet-${state}-btn`);
+                    if (btn) {
+                        btn.innerHTML = `
+                            <img src="${imgUrl}" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover; z-index: 1;">
+                            <p style="font-size:9px; z-index: 1;">${state.toUpperCase()}</p>
+                        `;
+                    }
+                };
+                img.onerror = function() {
+                    console.log(`No saved pet animation for ${state}`);
+                };
+                img.src = imgUrl;
+            });
+        }
+        loadPetAnimations();
+
+        async function handlePetUpload(fileInput, state) {
+            const file = fileInput.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('state', state);
+            try {
+                const res = await fetch(`${window.aiBackend.baseUrl}/upload_pet`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert(`${state.toUpperCase()} pet animation uploaded successfully!`);
+                    window.aiBackend.notifySettingsUpdated();
+                    loadPetAnimations();
+                }
+            } catch (err) {
+                console.error("Pet upload failed:", err);
+            }
+        }
+
+        document.getElementById('pet-input-idle').onchange = function() { handlePetUpload(this, 'idle'); };
+        document.getElementById('pet-input-listening').onchange = function() { handlePetUpload(this, 'listening'); };
+        document.getElementById('pet-input-thinking').onchange = function() { handlePetUpload(this, 'thinking'); };
+        document.getElementById('pet-input-speaking').onchange = function() { handlePetUpload(this, 'speaking'); };
 
         // Color palette switching
         document.querySelectorAll('.color-swatch').forEach(swatch => {
@@ -395,7 +770,7 @@
         // Gmail Link
         document.getElementById('connect-gmail-btn').onclick = async function() {
             this.innerText = "...";
-            const res = await fetch('http://localhost:8000/auth/gmail');
+            const res = await fetch(`${window.aiBackend.baseUrl}/auth/gmail`);
             const data = await res.json();
             if (data.status === "success") {
                 document.getElementById('gmail-status').innerText = "Active";
@@ -406,7 +781,7 @@
         // Calendar Link
         document.getElementById('connect-calendar-btn').onclick = async function() {
             this.innerText = "...";
-            const res = await fetch('http://localhost:8000/auth/calendar');
+            const res = await fetch(`${window.aiBackend.baseUrl}/auth/calendar`);
             const data = await res.json();
             if (data.status === "success") {
                 document.getElementById('calendar-status').innerText = "Active";
@@ -417,7 +792,7 @@
         // Device Pairing (QR)
         async function fetchPairingQR() {
             try {
-                const res = await fetch('http://localhost:8000/sync/status');
+                const res = await fetch(`${window.aiBackend.baseUrl}/sync/status`);
                 const data = await res.json();
                 if (data.pairing_qr) {
                     document.getElementById('pairing-qr').src = data.pairing_qr;
@@ -432,7 +807,7 @@
         // Memory Management Logic
         async function fetchMemories() {
             try {
-                const res = await fetch('http://localhost:8000/memory/facts');
+                const res = await fetch(`${window.aiBackend.baseUrl}/memory/facts`);
                 const data = await res.json();
                 
                 const personalList = document.getElementById('personal-list');
@@ -464,7 +839,7 @@
             if (!fact) return;
             
             try {
-                await fetch('http://localhost:8000/memory/facts', {
+                await fetch(`${window.aiBackend.baseUrl}/memory/facts`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ fact, category })
@@ -476,7 +851,7 @@
 
         async function deleteMemory(id) {
             try {
-                await fetch(`http://localhost:8000/memory/facts/${id}`, { method: 'DELETE' });
+                await fetch(`${window.aiBackend.baseUrl}/memory/facts/${id}`, { method: 'DELETE' });
                 fetchMemories();
             } catch (e) { console.error("Delete memory failed:", e); }
         }
@@ -509,7 +884,7 @@
 
         async function fetchAutomations() {
             try {
-                const res = await fetch('http://localhost:8000/automations');
+                const res = await fetch(`${window.aiBackend.baseUrl}/automations`);
                 const data = await res.json();
                 const list = document.getElementById('automations-list');
                 list.innerHTML = '';
@@ -555,26 +930,103 @@
             else if (action_type === 'notification' || action_type === 'voice_alert') action_config = { message: action_val };
 
             try {
-                await fetch('http://localhost:8000/automations', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, trigger_type, trigger_config, action_type, action_config })
-                });
+                await fetch(`${window.aiBackend.baseUrl}/automations`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ name, trigger_type, trigger_config, action_type, action_config, device: document.getElementById('auto-device').value })
+                    });
                 fetchAutomations();
             } catch (e) { console.error("Add automation failed:", e); }
         }
 
         async function deleteAutomation(id) {
             try {
-                await fetch(`http://localhost:8000/automations/${id}`, { method: 'DELETE' });
+                await fetch(`${window.aiBackend.baseUrl}/automations/${id}`, { method: 'DELETE' });
                 fetchAutomations();
             } catch (e) { console.error("Delete automation failed:", e); }
+        }
+
+        // IoT / Smart Home Connections Management
+        async function saveIoTConfig(vendor) {
+            let config = {};
+            let btn = document.getElementById(`connect-${btnNameMap(vendor)}-btn`);
+            btn.innerText = "Connecting...";
+            btn.disabled = true;
+
+            if (vendor === 'tasmota') {
+                config = { ip_address: document.getElementById('iot-tasmota-ip').value.trim() };
+            } else if (vendor === 'wled') {
+                config = { ip_address: document.getElementById('iot-wled-ip').value.trim() };
+            } else if (vendor === 'philips_hue') {
+                config = { bridge_ip: document.getElementById('iot-hue-ip').value.trim() };
+            } else if (vendor === 'tuya') {
+                config = {
+                    api_key: document.getElementById('iot-tuya-id').value.trim(),
+                    api_secret: document.getElementById('iot-tuya-secret').value.trim()
+                };
+            }
+
+            try {
+                const res = await fetch(`${window.aiBackend.baseUrl}/iot/activate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ vendor_id: vendor, config: config })
+                });
+                const result = await res.json();
+                if (result.status === "success") {
+                    btn.innerText = "Connected";
+                    alert(`Successfully connected to ${vendor}!`);
+                } else {
+                    btn.innerText = "Connect";
+                    btn.disabled = false;
+                    alert(`Failed to connect: ${result.message}`);
+                }
+            } catch (err) {
+                console.error(err);
+                btn.innerText = "Connect";
+                btn.disabled = false;
+                alert("Error connecting to backend.");
+            }
+        }
+
+        function btnNameMap(vendor) {
+            if (vendor === 'philips_hue') return 'hue';
+            return vendor;
+        }
+
+        async function fetchActiveIoTConfigs() {
+            try {
+                const res = await fetch(`${window.aiBackend.baseUrl}/iot/active`);
+                const data = await res.json();
+                const active = data.active || {};
+
+                if (active.tasmota) {
+                    document.getElementById('iot-tasmota-ip').value = active.tasmota.ip_address || '';
+                    document.getElementById('connect-tasmota-btn').innerText = "Connected";
+                }
+                if (active.wled) {
+                    document.getElementById('iot-wled-ip').value = active.wled.ip_address || '';
+                    document.getElementById('connect-wled-btn').innerText = "Connected";
+                }
+                if (active.philips_hue) {
+                    document.getElementById('iot-hue-ip').value = active.philips_hue.bridge_ip || '';
+                    document.getElementById('connect-hue-btn').innerText = "Connected";
+                }
+                if (active.tuya) {
+                    document.getElementById('iot-tuya-id').value = active.tuya.api_key || '';
+                    document.getElementById('iot-tuya-secret').value = active.tuya.api_secret || '';
+                    document.getElementById('connect-tuya-btn').innerText = "Connected";
+                }
+            } catch (err) {
+                console.error("Failed to fetch active IoT configurations:", err);
+            }
         }
 
         // Initialize
         fetchPairingQR();
         fetchMemories();
         fetchAutomations();
+        fetchActiveIoTConfigs();
     </script>
 </body>
 </html>
