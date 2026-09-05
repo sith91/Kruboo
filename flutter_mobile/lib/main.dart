@@ -28,6 +28,22 @@ import 'models/persona.dart';
 import 'screens/chat_history_screen.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'widgets/vrm_avatar_widget.dart';
+import 'services/overlay_service.dart';
+import 'screens/overlay_assistant_view.dart';
+import 'screens/settings_screen.dart';
+
+@pragma("vm:entry-point")
+void overlayMain() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: OverlayAssistantView(),
+    ),
+  );
+}
 
 void main() {
   runApp(const AssistantApp());
@@ -127,6 +143,13 @@ class _MainScreenState extends State<MainScreen> {
   bool _backgroundListening = false;
   int _selectedIndex = 0;
   String _activePersonaId = "";
+  String _avatarMode = "vrm"; // 'vrm' or 'orb'
+  String _currentEmotion = "neutral";
+  String _currentFeeling = "professional";
+  bool _isSpeaking = false;
+  double _lipSyncVolume = 0.0;
+  final OverlayService _overlayService = OverlayService();
+  StreamSubscription? _overlaySub;
 
   Process? _pythonProcess;
   StreamSubscription? _wsSubscription;
@@ -232,6 +255,22 @@ class _MainScreenState extends State<MainScreen> {
     _loadSettings();
     _startPythonBackend();
     _initTts();
+    _initOverlayListener();
+  }
+
+  void _initOverlayListener() {
+    _overlaySub = FlutterOverlayWindow.overlayListener.listen((event) {
+      if (event != null) {
+        try {
+          final data = event is Map ? event : jsonDecode(event.toString());
+          if (data['action'] == 'voice_trigger') {
+            _handleOrbTap();
+          }
+        } catch (e) {
+          debugPrint("Overlay event error: $e");
+        }
+      }
+    });
   }
 
   void _loadSettings() async {
@@ -239,6 +278,8 @@ class _MainScreenState extends State<MainScreen> {
     final configService = LLMConfigService();
     final config = await configService.loadConfig();
     setState(() {
+      _avatarMode = prefs.getString('avatar_mode') ?? 'vrm';
+      _currentFeeling = prefs.getString('feeling') ?? 'professional';
       _backgroundListening = prefs.getBool('background_listening') ?? false;
       _activePersonaId = prefs.getString('active_persona_id') ?? '';
       if (config != null) {
@@ -319,9 +360,19 @@ class _MainScreenState extends State<MainScreen> {
     if (Platform.isAndroid) {
       // On Android: delegate to Kotlin BackendService which runs Python via Chaquopy
       try {
-        final result = await _backendChannel.invokeMethod<String>('startBackend');
-        debugPrint("[Backend] Android service: $result");
-        _waitForBackendReady();
+        final dynamic result = await _backendChannel.invokeMethod('startBackend');
+        debugPrint("[Backend] Android service result: $result");
+        int port = 8000;
+        if (result is int && result > 0) {
+          port = result;
+        } else {
+          try {
+            final dynamic p = await _backendChannel.invokeMethod('getBackendPort');
+            if (p is int && p > 0) port = p;
+          } catch (_) {}
+        }
+        await _apiService.setPort(port);
+        _waitForBackendReady(port);
       } on MissingPluginException {
         debugPrint("[Backend] MethodChannel not available — running without embedded backend");
       } catch (e) {
@@ -337,19 +388,19 @@ class _MainScreenState extends State<MainScreen> {
         );
         _pythonProcess?.stdout.transform(utf8.decoder).listen((d) => debugPrint("[Backend] $d"));
         _pythonProcess?.stderr.transform(utf8.decoder).listen((d) => debugPrint("[Backend ERR] $d"));
-        _waitForBackendReady();
+        _waitForBackendReady(8000);
       } catch (e) {
         debugPrint("[Backend] Could not start desktop process: $e");
       }
     }
   }
 
-  Future<void> _waitForBackendReady() async {
+  Future<void> _waitForBackendReady([int port = 8000]) async {
     setState(() => _orbState = OrbState.thinking);
     for (int i = 0; i < 20; i++) {
       await Future.delayed(const Duration(seconds: 1));
       try {
-        final res = await http.get(Uri.parse('http://127.0.0.1:8000/')).timeout(
+        final res = await http.get(Uri.parse('http://127.0.0.1:$port/')).timeout(
           const Duration(seconds: 1));
         if (res.statusCode == 200) {
           _initWebSocket();
@@ -359,7 +410,7 @@ class _MainScreenState extends State<MainScreen> {
         }
       } catch (_) {}
     }
-    debugPrint('[Backend] Timeout — backend may not have started');
+    debugPrint('[Backend] Timeout — backend may not have started on port $port');
     setState(() => _orbState = OrbState.idle);
   }
 
@@ -378,6 +429,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    _overlaySub?.cancel();
     _pythonProcess?.kill();
     _wsSubscription?.cancel();
     _controller.dispose();
@@ -398,12 +450,16 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _stopSpeaking() async {
     await _flutterTts.stop();
+    await _audioPlayer.stop();
     setState(() {
+      _isSpeaking = false;
       _orbState = OrbState.idle;
     });
+    _overlayService.shareDataToOverlay({'status': 'idle'});
   }
 
   Future<void> _startRecording() async {
+    _overlayService.shareDataToOverlay({'status': 'listening'});
     if (Platform.isAndroid) {
       if (!_speechEnabled) {
         _speechEnabled = await _speechToText.initialize(
@@ -541,18 +597,32 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _speak(String text) async {
+    setState(() {
+      _isSpeaking = true;
+      _orbState = OrbState.speaking;
+    });
+    _overlayService.shareDataToOverlay({'status': 'speaking'});
+
     // Attempt backend TTS first
     final file = await _apiService.getTtsAudio(text, _language);
     if (file != null) {
       await _audioPlayer.play(DeviceFileSource(file.path));
       _audioPlayer.onPlayerComplete.listen((_) {
-        setState(() => _orbState = OrbState.idle);
+        setState(() {
+          _isSpeaking = false;
+          _orbState = OrbState.idle;
+        });
+        _overlayService.shareDataToOverlay({'status': 'idle'});
       });
     } else {
       // Fallback to local TTS
       await _flutterTts.speak(text);
       _flutterTts.setCompletionHandler(() {
-        setState(() => _orbState = OrbState.idle);
+        setState(() {
+          _isSpeaking = false;
+          _orbState = OrbState.idle;
+        });
+        _overlayService.shareDataToOverlay({'status': 'idle'});
       });
     }
   }
@@ -560,40 +630,9 @@ class _MainScreenState extends State<MainScreen> {
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => _SettingsPage(
-          initialName: _assistantName,
-          initialLang: _language,
-          initialProvider: _llmProvider,
-          initialModel: _llmModel,
-          initialKey: _apiKey,
-          initialSttProvider: _sttProvider,
-          initialBackgroundListening: _backgroundListening,
+        builder: (context) => SettingsScreen(
           apiService: _apiService,
-          onLinkDevice: _initWebSocket,
-          activePersonaId: _activePersonaId,
-          onSave: (name, lang, provider, model, key, sttProvider, bgListening, activePersonaId) async {
-            setState(() {
-              _assistantName = name;
-              _language = lang;
-              _llmProvider = provider;
-              _llmModel = model;
-              _apiKey = key;
-              _sttProvider = sttProvider;
-              _backgroundListening = bgListening;
-              _activePersonaId = activePersonaId;
-            });
-            final configService = LLMConfigService();
-            await configService.saveConfig(LLMConfig(
-              provider: provider,
-              model: model,
-              apiKey: key,
-            ));
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setBool('background_listening', bgListening);
-            await prefs.setString('active_persona_id', activePersonaId);
-            _updateBackgroundListening(bgListening);
-            _updateTtsLanguage();
-          },
+          onSettingsSaved: () => _loadSettings(),
         ),
       ),
     );
@@ -664,7 +703,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget _buildHeader() {
     return Container(
       height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -674,7 +713,45 @@ class _MainScreenState extends State<MainScreen> {
               onPressed: () => setState(() => _showChat = false),
             )
           else
-            const SizedBox(width: 40),
+            Row(
+              children: [
+                IconButton(
+                  tooltip: _avatarMode == 'vrm' ? "Switch to Siri Orb" : "Switch to 3D VRM Avatar",
+                  icon: Icon(
+                    _avatarMode == 'vrm' ? Icons.face_3_rounded : Icons.blur_on_rounded,
+                    color: _avatarMode == 'vrm' ? const Color(0xFF00F2FE) : AppTheme.textDim,
+                    size: 22,
+                  ),
+                  onPressed: () async {
+                    final newMode = _avatarMode == 'vrm' ? 'orb' : 'vrm';
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString('avatar_mode', newMode);
+                    setState(() {
+                      _avatarMode = newMode;
+                    });
+                    _overlayService.shareDataToOverlay({'mode': newMode});
+                  },
+                ),
+                IconButton(
+                  tooltip: "Launch Floating Assistant",
+                  icon: const Icon(
+                    Icons.layers_rounded,
+                    color: AppTheme.accent,
+                    size: 22,
+                  ),
+                  onPressed: () async {
+                    final success = await _overlayService.showFloatingOverlay();
+                    if (!success && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Overlay permission is required to display over apps."),
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
           
           Text(
             _showChat ? "Conversation" : _assistantName.toUpperCase(),
@@ -686,7 +763,13 @@ class _MainScreenState extends State<MainScreen> {
             ),
           ),
           
-          const SizedBox(width: 40),
+          if (!_showChat)
+            IconButton(
+              icon: const Icon(Icons.tune_rounded, size: 20, color: AppTheme.textDim),
+              onPressed: _openSettings,
+            )
+          else
+            const SizedBox(width: 40),
         ],
       ),
     );
@@ -780,21 +863,69 @@ class _MainScreenState extends State<MainScreen> {
 
   Widget _buildOrbView() {
     return Center(
-      key: const ValueKey("orb"),
+      key: ValueKey(_avatarMode),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Spacer(flex: 2),
-          OrbWidget(
-            state: _orbState,
-            apiService: _apiService,
-            onTap: _handleOrbTap,
-            onLongPress: () => setState(() => _showChat = true),
-          ),
-          const SizedBox(height: 50),
+          if (_avatarMode == 'vrm')
+            Container(
+              width: 260,
+              height: 310,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                gradient: RadialGradient(
+                  center: Alignment.center,
+                  radius: 0.95,
+                  colors: [
+                    const Color(0xFF1E293B).withOpacity(0.65),
+                    const Color(0xFF0F172A).withOpacity(0.9),
+                  ],
+                ),
+                border: Border.all(
+                  color: _orbState == OrbState.listening
+                      ? const Color(0xFF00F2FE).withOpacity(0.8)
+                      : _isSpeaking
+                          ? const Color(0xFFFF007F).withOpacity(0.8)
+                          : Colors.white.withOpacity(0.18),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: _orbState == OrbState.listening
+                        ? const Color(0xFF00F2FE).withOpacity(0.4)
+                        : _isSpeaking
+                            ? const Color(0xFFFF007F).withOpacity(0.35)
+                            : Colors.black.withOpacity(0.4),
+                    blurRadius: 30,
+                    spreadRadius: 2,
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: VRMAvatarWidget(
+                  isSpeaking: _isSpeaking,
+                  emotion: _currentEmotion,
+                  feeling: _currentFeeling,
+                  lipSyncVolume: _lipSyncVolume,
+                  framing: 'bust',
+                  onTap: _handleOrbTap,
+                ),
+              ),
+            )
+          else
+            OrbWidget(
+              state: _orbState,
+              apiService: _apiService,
+              onTap: _handleOrbTap,
+              onLongPress: () => setState(() => _showChat = true),
+            ),
+          const SizedBox(height: 32),
           Text(
             _orbState == OrbState.listening ? "LISTENING..." : 
-            _orbState == OrbState.thinking ? "THINKING..." : "KRUUBOO",
+            _orbState == OrbState.thinking ? "THINKING..." : 
+            _isSpeaking ? "SPEAKING..." : _assistantName.toUpperCase(),
             style: GoogleFonts.inter(
               letterSpacing: 4,
               fontSize: 12,
@@ -983,7 +1114,7 @@ class _CommandExecutionCardState extends State<_CommandExecutionCard> {
             const SizedBox(height: 12),
             Container(
               width: double.infinity,
-              maxHeight: 150,
+              constraints: const BoxConstraints(maxHeight: 150),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: const Color(0xFF111111),
@@ -1079,458 +1210,6 @@ class _QuickAction extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(label, style: GoogleFonts.inter(fontSize: 10, color: AppTheme.textDim, fontWeight: FontWeight.w500)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SettingsPage extends StatefulWidget {
-  final String initialName;
-  final String initialLang;
-  final String initialProvider;
-  final String initialModel;
-  final String initialKey;
-  final String initialSttProvider;
-  final bool initialBackgroundListening;
-  final String activePersonaId;
-  final ApiService apiService;
-  final VoidCallback onLinkDevice;
-  final Function(String, String, String, String, String, String, bool, String) onSave;
-
-  const _SettingsPage({
-    Key? key,
-    required this.initialName,
-    required this.initialLang,
-    required this.initialProvider,
-    required this.initialModel,
-    required this.initialKey,
-    required this.initialSttProvider,
-    required this.initialBackgroundListening,
-    required this.activePersonaId,
-    required this.apiService,
-    required this.onLinkDevice,
-    required this.onSave,
-  }) : super(key: key);
-
-  @override
-  _SettingsPageState createState() => _SettingsPageState();
-}
-
-class _SettingsPageState extends State<_SettingsPage> {
-  late String _name, _lang, _provider, _model, _key, _sttProvider;
-  late bool _bgListening;
-  String _activePersonaId = '';
-  List<Persona> _personas = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _name = widget.initialName;
-    _activePersonaId = widget.activePersonaId;
-
-    final validLangs = ["English", "Sinhala", "Tamil"];
-    _lang = validLangs.firstWhere((e) => e.toLowerCase() == widget.initialLang.toLowerCase(), orElse: () => validLangs.first);
-
-    final validProviders = ["OpenAI", "Claude", "Deepseek", "Grok", "Local"];
-    _provider = validProviders.firstWhere((e) => e.toLowerCase() == widget.initialProvider.toLowerCase(), orElse: () => validProviders.first);
-
-    final validStt = ["local", "whisper"];
-    _sttProvider = validStt.firstWhere((e) => e.toLowerCase() == widget.initialSttProvider.toLowerCase(), orElse: () => validStt.first);
-
-    _model = widget.initialModel;
-    _key = widget.initialKey;
-    _bgListening = widget.initialBackgroundListening;
-    _loadPersonas();
-  }
-
-  Future<void> _loadPersonas() async {
-    final personas = await PersonaService().getPersonas();
-    if (!mounted) return;
-    setState(() {
-      _personas = personas;
-      if (_activePersonaId.isNotEmpty && !personas.any((p) => p.id == _activePersonaId)) {
-        _activePersonaId = '';
-      }
-    });
-  }
-
-  void _save() {
-    widget.onSave(_name, _lang, _provider, _model, _key, _sttProvider, _bgListening, _activePersonaId);
-    Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        backgroundColor: AppTheme.background,
-        title: Text(
-          'SETTINGS',
-          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 2, color: AppTheme.textDim),
-        ),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: _save,
-            child: Text('Save', style: GoogleFonts.inter(color: AppTheme.accent, fontWeight: FontWeight.w600)),
-          ),
-        ],
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(0.5),
-          child: Container(height: 0.5, color: AppTheme.border),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        children: [
-          // ── General ────────────────────────────────────────────
-          _sectionHeader('GENERAL'),
-          _buildField("Assistant Name", _name, (val) => _name = val),
-          _buildDropdown("Language", _lang, ["English", "Sinhala", "Tamil"], (val) => setState(() => _lang = val!)),
-          const SizedBox(height: 24),
-
-          // ── AI Engine ────────────────────────────────────────────
-          _sectionHeader('AI ENGINE'),
-          _buildDropdown("LLM Provider", _provider, ["OpenAI", "Claude", "Deepseek", "Grok", "Local"], (val) => setState(() => _provider = val!)),
-          _buildField("Model Name", _model, (val) => _model = val),
-          _buildField("API Key", _key, (val) => _key = val, obscure: true),
-          _buildDropdown("STT Provider", _sttProvider, ["local", "whisper"], (val) => setState(() => _sttProvider = val!)),
-          if (Platform.isAndroid)
-            _buildSwitch("Background Voice Listening", _bgListening, (val) => setState(() => _bgListening = val)),
-          const SizedBox(height: 24),
-
-          // ── Identity & Assets ────────────────────────────────────
-          _sectionHeader('IDENTITY & ASSETS'),
-          _buildSettingsLink("UPLOAD VOICE SAMPLE (ELEVENLABS)", Icons.record_voice_over_outlined, () async {
-            try {
-              final result = await FilePicker.pickFiles(
-                type: FileType.custom,
-                allowedExtensions: ['wav', 'mp3'],
-              );
-              if (result != null && result.files.single.path != null) {
-                final file = File(result.files.single.path!);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Uploading voice sample...")),
-                );
-                final ok = await widget.apiService.uploadVoice(file);
-                if (ok) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Voice cloned successfully!"), backgroundColor: Colors.green),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Upload failed. Verify API Key."), backgroundColor: Colors.red),
-                  );
-                }
-              }
-            } catch (e) {
-              debugPrint("Voice clone error: $e");
-            }
-          }),
-          _buildSettingsLink("UPLOAD IDLE PET (.GIF/.PNG)", Icons.pets, () => _pickAndUploadPet("idle")),
-          _buildSettingsLink("UPLOAD LISTENING PET (.GIF/.PNG)", Icons.mic_none, () => _pickAndUploadPet("listening")),
-          _buildSettingsLink("UPLOAD THINKING PET (.GIF/.PNG)", Icons.psychology, () => _pickAndUploadPet("thinking")),
-          _buildSettingsLink("UPLOAD SPEAKING PET (.GIF/.PNG)", Icons.volume_up, () => _pickAndUploadPet("speaking")),
-          const SizedBox(height: 24),
-
-          // ── Persona ─────────────────────────────────────────────
-          _sectionHeader('PERSONA'),
-          if (_personas.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: DropdownButtonFormField<String>(
-                value: _activePersonaId.isEmpty ? null : _activePersonaId,
-                decoration: InputDecoration(
-                  labelText: 'Active Persona',
-                  labelStyle: const TextStyle(color: AppTheme.textDim, fontSize: 13),
-                  filled: true,
-                  fillColor: AppTheme.surface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                ),
-                dropdownColor: const Color(0xFF1C1C1E),
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-                hint: const Text('None (default)', style: TextStyle(color: AppTheme.textDim, fontSize: 14)),
-                items: [
-                  const DropdownMenuItem<String>(value: '', child: Text('None (default)', style: TextStyle(color: AppTheme.textDim))),
-                  ..._personas.map((p) => DropdownMenuItem<String>(
-                    value: p.id,
-                    child: Row(children: [
-                      const Icon(Icons.person_outline, size: 16, color: AppTheme.accent),
-                      const SizedBox(width: 8),
-                      Text(p.name),
-                    ]),
-                  )),
-                ],
-                onChanged: (val) => setState(() => _activePersonaId = val ?? ''),
-              ),
-            ),
-          _buildSettingsLink("MANAGE PERSONAS", Icons.person_add_outlined, () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const PersonaScreen()))
-                .then((_) => _loadPersonas());
-          }),
-          const SizedBox(height: 24),
-
-          // ── Tools ────────────────────────────────────────────
-          _sectionHeader('TOOLS & MEMORY'),
-          _buildSettingsLink("CHAT HISTORY", Icons.history_rounded, () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => ChatHistoryScreen(apiService: widget.apiService)));
-          }),
-          _buildSettingsLink("MANAGE MEMORY", Icons.psychology_outlined, () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => MemoryScreen(apiService: widget.apiService)));
-          }),
-          _buildSettingsLink("DYNAMIC AUTOMATIONS", Icons.auto_fix_high_outlined, () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => AutomationScreen(apiService: widget.apiService)));
-          }),
-          _buildSettingsLink("PLUGINS", Icons.extension_outlined, () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => PluginScreen()));
-          }),
-          const SizedBox(height: 24),
-
-          // ── Device ────────────────────────────────────────────
-          _sectionHeader('DEVICE'),
-          _buildSettingsLink("DEVICE PAIRING (P2P)", Icons.devices_other_rounded, () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => _DevicePairingPage(
-                  apiService: widget.apiService,
-                  onLinkDevice: widget.onLinkDevice,
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        title,
-        style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.accent, letterSpacing: 1.5),
-      ),
-    );
-  }
-
-  Widget _buildSettingsLink(String label, IconData icon, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(icon, color: AppTheme.accent, size: 20),
-      title: Text(label, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 12),
-      onTap: onTap,
-    );
-  }
-
-  Widget _buildField(String label, String value, Function(String) onChanged, {bool obscure = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        decoration: InputDecoration(labelText: label),
-        controller: TextEditingController(text: value),
-        onChanged: onChanged,
-        obscureText: obscure,
-      ),
-    );
-  }
-
-  Widget _buildDropdown(String label, String value, List<String> items, Function(String?) onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        value: value,
-        decoration: InputDecoration(labelText: label),
-        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-        onChanged: onChanged,
-      ),
-    );
-  }
-
-  Widget _buildSwitch(String label, bool value, Function(bool) onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: SwitchListTile(
-        title: Text(label, style: GoogleFonts.inter(fontSize: 13, color: AppTheme.text)),
-        subtitle: Text("Say 'Kruuboo' in background (increases battery use)", style: GoogleFonts.inter(fontSize: 10, color: AppTheme.textDim)),
-        value: value,
-        onChanged: onChanged,
-        activeColor: AppTheme.accent,
-        contentPadding: EdgeInsets.zero,
-      ),
-    );
-  }
-
-  void _pickAndUploadPet(String state) async {
-    try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['gif', 'png', 'jpg', 'jpeg', 'apng'],
-      );
-      if (result != null && result.files.single.path != null) {
-        final file = File(result.files.single.path!);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Uploading $state pet animation...")),
-        );
-        final ok = await widget.apiService.uploadPetAnimation(file, state);
-        if (!mounted) return;
-        if (ok) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("$state pet uploaded successfully!"), backgroundColor: Colors.green),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Upload failed. Verify server connection."), backgroundColor: Colors.red),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint("Pet upload error: $e");
-    }
-  }
-}
-
-class _ScannerScreen extends StatelessWidget {
-  final Function(String) onScan;
-  const _ScannerScreen({Key? key, required this.onScan}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Scan Pairing QR")),
-      body: MobileScanner(
-        onDetect: (capture) {
-          final List<Barcode> barcodes = capture.barcodes;
-          for (final barcode in barcodes) {
-            if (barcode.rawValue != null) {
-              onScan(barcode.rawValue!);
-              break;
-            }
-          }
-        },
-      ),
-    );
-  }
-}
-
-class _DevicePairingPage extends StatefulWidget {
-  final ApiService apiService;
-  final VoidCallback onLinkDevice;
-
-  const _DevicePairingPage({Key? key, required this.apiService, required this.onLinkDevice}) : super(key: key);
-
-  @override
-  _DevicePairingPageState createState() => _DevicePairingPageState();
-}
-
-class _DevicePairingPageState extends State<_DevicePairingPage> {
-  void _openScanner(BuildContext context) async {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => _ScannerScreen(
-          onScan: (data) async {
-            try {
-              final Map<String, dynamic> pairing = json.decode(data);
-              await widget.apiService.updateConnection(
-                pairing['ip'], 
-                pairing['port'], 
-                pairing['token']
-              );
-              widget.onLinkDevice(); // Refresh WS connection with new token/IP
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Device Linked Successfully!"), backgroundColor: Colors.green),
-                );
-                Navigator.pop(context); // Close scanner
-                Navigator.pop(context); // Close pairing page
-              }
-            } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Invalid QR Code"), backgroundColor: Colors.red),
-              );
-            }
-          },
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        backgroundColor: AppTheme.background,
-        title: Text(
-          'DEVICE PAIRING',
-          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 2, color: AppTheme.textDim),
-        ),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(0.5),
-          child: Container(height: 0.5, color: AppTheme.border),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Spacer(),
-            const Icon(Icons.devices_other_rounded, size: 80, color: AppTheme.accent),
-            const SizedBox(height: 24),
-            Text(
-              "Pair with Desktop Assistant",
-              style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              "Connect to your desktop brain to offload heavy calculations and use custom LLMs and Vision settings.",
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textDim, height: 1.5),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.border, width: 0.5),
-              ),
-              child: Text(
-                "Current Backend: ${widget.apiService.baseUrl}",
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.white70),
-              ),
-            ),
-            const Spacer(),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF25D366),
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text("LINK NEW DEVICE (P2P)"),
-              onPressed: () => _openScanner(context),
-            ),
-            const SizedBox(height: 20),
           ],
         ),
       ),

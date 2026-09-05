@@ -2,119 +2,246 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:* http://127.0.0.1:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' http://localhost:* http://127.0.0.1:* data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./node_modules/three/build/three.module.js",
+            "three/addons/": "./node_modules/three/examples/jsm/",
+            "@pixiv/three-vrm": "./node_modules/@pixiv/three-vrm/lib/three-vrm.module.js"
+        }
+    }
+    </script>
     <style>
-        :root { --accent: #6b4cff; --bg: rgba(10, 10, 10, 0.8); --border: rgba(255, 255, 255, 0.1); }
-        body { background: transparent; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: 'Inter', sans-serif; color: #f0f0f5; -webkit-user-select: none; }
-        .settings-card { width: 480px; background: var(--bg); backdrop-filter: blur(50px); -webkit-backdrop-filter: blur(50px); border: 1px solid var(--border); border-radius: 28px; padding: 30px; box-shadow: 0 40px 100px rgba(0, 0, 0, 0.9); display: flex; flex-direction: column; gap: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; -webkit-app-region: drag; }
-        .header h1 { font-size: 20px; font-weight: 500; margin: 0; letter-spacing: -0.5px; -webkit-app-region: drag; }
-        .close-btn { background: rgba(255,255,255,0.05); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; -webkit-app-region: no-drag; }
-        
-        .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
-        .tab-btn { background: none; border: none; color: #777; cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 0; position: relative; transition: color 0.2s; }
-        .tab-btn.active { color: white; }
-        .tab-btn.active::after { content: ''; position: absolute; bottom: -11px; left: 0; width: 100%; height: 2.5px; background: var(--accent); border-radius: 2px; }
+        :root { --accent: #6b4cff; --bg: rgba(10,10,10,0.88); --border: rgba(255,255,255,0.08); --sidebar-w: 154px; }
 
-        .tab-content { display: none; -webkit-app-region: no-drag; max-height: 450px; overflow-y: auto; padding-right: 10px; margin-top: 15px; }
+        * { box-sizing: border-box; }
+
+        body {
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            color: #f0f0f5;
+            -webkit-user-select: none;
+        }
+
+        /* ── Card ─────────────────────────────── */
+        .settings-card {
+            width: 720px;
+            height: 86vh;
+            max-height: 680px;
+            background: var(--bg);
+            backdrop-filter: blur(60px);
+            -webkit-backdrop-filter: blur(60px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            box-shadow: 0 40px 120px rgba(0,0,0,0.95);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ───────────────────────────── */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            -webkit-app-region: drag;
+            padding: 18px 22px 14px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .header h1 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0;
+            letter-spacing: -0.4px;
+            -webkit-app-region: drag;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .header h1::before { content: '⚙️'; font-size: 14px; }
+        .close-btn {
+            background: rgba(255,255,255,0.07);
+            border: none;
+            color: #bbb;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            -webkit-app-region: no-drag;
+            font-size: 10px;
+            transition: all 0.2s;
+        }
+        .close-btn:hover { background: rgba(255,80,80,0.25); color: #ff6b6b; }
+
+        /* ── Body: sidebar + content ───────────── */
+        .settings-body {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── Sidebar ───────────────────────────── */
+        .tabs {
+            width: var(--sidebar-w);
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 16px 10px;
+            border-right: 1px solid var(--border);
+            background: rgba(0,0,0,0.18);
+            overflow-y: auto;
+        }
+        .tabs-group-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #444;
+            font-weight: 700;
+            padding: 8px 8px 4px;
+        }
+        .tab-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: none;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 8px 10px;
+            border-radius: 10px;
+            transition: all 0.15s;
+            text-align: left;
+            width: 100%;
+            white-space: nowrap;
+            -webkit-app-region: no-drag;
+        }
+        .tab-btn .tab-icon { font-size: 14px; flex-shrink: 0; }
+        .tab-btn:hover { color: #ddd; background: rgba(255,255,255,0.06); }
+        .tab-btn.active {
+            color: white;
+            background: rgba(107,76,255,0.22);
+            font-weight: 600;
+        }
+        .tab-btn.active .tab-icon { filter: drop-shadow(0 0 4px rgba(107,76,255,0.8)); }
+
+        /* ── Content pane ──────────────────────── */
+        .content-pane {
+            flex: 1;
+            overflow-y: auto;
+            padding: 18px 20px;
+            -webkit-app-region: no-drag;
+        }
+        .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        .section { background: rgba(255,255,255,0.03); border-radius: 18px; padding: 18px; border: 1px solid var(--border); margin-bottom: 15px; }
-        .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--accent); margin-bottom: 12px; font-weight: 700; opacity: 0.8; }
-        
-        .control-group { display: flex; flex-direction: column; gap: 12px; }
-        label { font-size: 12px; color: #aaa; font-weight: 500; }
-        input, select { background: rgba(0,0,0,0.3); border: 1px solid var(--border); border-radius: 12px; padding: 12px; color: white; font-family: inherit; font-size: 13px; outline: none; transition: border-color 0.2s; }
+        /* ── Content header ────────────────────── */
+        .content-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 0 0 14px;
+            color: #f0f0f5;
+        }
+
+        /* ── Sections ──────────────────────────── */
+        .section {
+            background: rgba(255,255,255,0.03);
+            border-radius: 14px;
+            padding: 14px 16px;
+            border: 1px solid var(--border);
+            margin-bottom: 10px;
+        }
+        .section-title {
+            font-size: 9.5px;
+            text-transform: uppercase;
+            letter-spacing: 1.3px;
+            color: var(--accent);
+            margin-bottom: 10px;
+            font-weight: 700;
+            opacity: 0.85;
+        }
+
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-size: 11px; color: #999; font-weight: 500; }
+        input, select {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 9px 11px;
+            color: white;
+            font-family: inherit;
+            font-size: 12px;
+            outline: none;
+            transition: border-color 0.2s;
+            width: 100%;
+        }
         input:focus, select:focus { border-color: var(--accent); }
 
-        .color-palette { display: flex; gap: 12px; margin-top: 8px; }
-        .color-swatch { width: 30px; height: 30px; border-radius: 10px; cursor: pointer; border: 2.5px solid transparent; transition: transform 0.2s; }
-        .color-swatch.active { border-color: white; transform: scale(1.1); }
+        /* ── Color palette ─────────────────────── */
+        .color-palette { display: flex; gap: 9px; margin-top: 5px; }
+        .color-swatch { width: 26px; height: 26px; border-radius: 8px; cursor: pointer; border: 2.5px solid transparent; transition: transform 0.2s; }
+        .color-swatch.active { border-color: white; transform: scale(1.12); }
 
-        .identity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-        .upload-card { 
+        /* ── Identity grid ─────────────────────── */
+        .identity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .upload-card {
             position: relative;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.08); 
-            border-radius: 16px; 
-            padding: 24px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            gap: 8px; 
-            cursor: pointer; 
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 12px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
             overflow: hidden;
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); 
-            box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.01);
+            transition: all 0.22s;
         }
-        .upload-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            border-radius: 16px;
-            background: linear-gradient(135deg, rgba(107, 76, 255, 0.1), transparent);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .upload-card:hover { 
-            border-color: var(--accent); 
-            background: rgba(107, 76, 255, 0.03); 
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(107, 76, 255, 0.15), inset 0 0 16px rgba(107, 76, 255, 0.05);
-        }
-        .upload-card:hover::before {
-            opacity: 1;
-        }
-        .upload-card span { 
-            font-size: 26px; 
-            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.2)); 
-            z-index: 1;
-            transition: transform 0.3s ease;
-        }
-        .upload-card:hover span {
-            transform: scale(1.1);
-        }
-        .upload-card p { 
-            margin: 0; 
-            font-size: 9px; 
-            color: #888; 
-            font-weight: 600; 
-            text-transform: uppercase; 
-            letter-spacing: 1px; 
-            z-index: 1;
-            transition: color 0.3s ease;
-        }
-        .upload-card:hover p {
-            color: #fff;
-            text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
-        }
+        .upload-card::before { content: ''; position: absolute; inset: 0; border-radius: 12px; background: linear-gradient(135deg, rgba(107,76,255,0.1), transparent); opacity: 0; transition: opacity 0.22s; }
+        .upload-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 6px 18px rgba(107,76,255,0.14); }
+        .upload-card:hover::before { opacity: 1; }
+        .upload-card span { font-size: 22px; z-index: 1; }
+        .upload-card p { margin: 0; font-size: 9px; color: #777; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; z-index: 1; }
+        .upload-card:hover p { color: #fff; }
 
-        .plugin-item { background: rgba(255,255,255,0.04); padding: 12px 16px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
-        .plugin-item button { background: var(--accent); border: none; color: white; padding: 6px 12px; border-radius: 8px; font-size: 11px; cursor: pointer; }
+        /* ── Misc ──────────────────────────────── */
+        .plugin-item { background: rgba(255,255,255,0.04); padding: 9px 13px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; }
+        .plugin-item button { background: var(--accent); border: none; color: white; padding: 5px 10px; border-radius: 7px; font-size: 11px; cursor: pointer; }
 
-        .connection-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 18px; padding: 16px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .conn-info { display: flex; gap: 12px; align-items: center; }
-        .conn-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; }
+        .connection-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 13px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .conn-info { display: flex; gap: 10px; align-items: center; }
+        .conn-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; }
         .conn-icon.gmail { background: #EA4335; }
         .conn-icon.calendar { background: #4285F4; }
         .conn-icon.whatsapp { background: #25D366; }
-        .conn-details h4 { margin: 0; font-size: 14px; font-weight: 500; }
-        .conn-details p { margin: 2px 0 0; font-size: 11px; color: #777; }
-        
-        .save-btn { background: white; color: black; border: none; padding: 15px; border-radius: 16px; font-weight: 600; font-size: 14px; cursor: pointer; margin-top: 10px; -webkit-app-region: no-drag; transition: opacity 0.2s; }
-        .save-btn:hover { opacity: 0.9; }
+        .conn-details h4 { margin: 0; font-size: 12.5px; font-weight: 500; }
+        .conn-details p { margin: 2px 0 0; font-size: 10px; color: #666; }
 
-        .memory-item { background: rgba(255,255,255,0.04); padding: 8px 12px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; }
-        .memory-item span { flex: 1; margin-right: 10px; opacity: 0.9; }
-        .memory-item button { background: none; border: none; color: #ff4c4c; cursor: pointer; font-size: 14px; padding: 0 5px; opacity: 0.6; }
+        .save-btn { background: var(--accent); color: white; border: none; padding: 11px; border-radius: 12px; font-weight: 600; font-size: 12.5px; cursor: pointer; margin-top: 8px; width: 100%; -webkit-app-region: no-drag; transition: opacity 0.2s; box-shadow: 0 4px 16px rgba(107,76,255,0.35); }
+        .save-btn:hover { opacity: 0.88; }
+
+        .memory-item { background: rgba(255,255,255,0.04); padding: 6px 10px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; font-size: 11.5px; }
+        .memory-item span { flex: 1; margin-right: 8px; opacity: 0.9; }
+        .memory-item button { background: none; border: none; color: #ff4c4c; cursor: pointer; font-size: 14px; padding: 0 3px; opacity: 0.6; }
         .memory-item button:hover { opacity: 1; }
-        .add-btn { background: var(--accent); border: none; color: white; width: 40px; border-radius: 12px; cursor: pointer; font-size: 18px; }
+        .add-btn { background: var(--accent); border: none; color: white; width: 36px; border-radius: 10px; cursor: pointer; font-size: 17px; }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+        /* ── Scrollbar ─────────────────────────── */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
     </style>
+
 </head>
 <body>
     <div class="settings-card">
@@ -123,16 +250,44 @@
             <button id="close-btn" class="close-btn">✕</button>
         </header>
 
+        <div class="settings-body">
+
         <nav class="tabs">
-            <button class="tab-btn active" onclick="switchTab('general', this)" data-i18n="tab_general">General</button>
-            <button class="tab-btn" onclick="switchTab('identity', this)" data-i18n="tab_identity">Identity</button>
-            <button class="tab-btn" onclick="switchTab('connections', this)" data-i18n="tab_connections">Links</button>
-            <button class="tab-btn" onclick="switchTab('devices', this)">Devices</button>
-            <button class="tab-btn" onclick="switchTab('iot', this)">Smart Home</button>
-            <button class="tab-btn" onclick="switchTab('ai', this)" data-i18n="tab_ai">Engine</button>
-            <button class="tab-btn" onclick="switchTab('memory', this)" data-i18n="tab_memory">Memory</button>
-            <button class="tab-btn" onclick="switchTab('automations', this)">Automations</button>
+            <span class="tabs-group-label">General</span>
+            <button class="tab-btn active" onclick="switchTab('general', this)">
+                <span class="tab-icon">🏠</span> General
+            </button>
+            <button class="tab-btn" onclick="switchTab('identity', this)">
+                <span class="tab-icon">👤</span> Identity
+            </button>
+            <button class="tab-btn" onclick="switchTab('languages', this)">
+                <span class="tab-icon">🌐</span> Languages
+            </button>
+
+            <span class="tabs-group-label">Connectivity</span>
+            <button class="tab-btn" onclick="switchTab('connections', this)">
+                <span class="tab-icon">🔗</span> Links
+            </button>
+            <button class="tab-btn" onclick="switchTab('devices', this)">
+                <span class="tab-icon">📱</span> Devices
+            </button>
+            <button class="tab-btn" onclick="switchTab('iot', this)">
+                <span class="tab-icon">🏡</span> Smart Home
+            </button>
+
+            <span class="tabs-group-label">Intelligence</span>
+            <button class="tab-btn" onclick="switchTab('ai', this)">
+                <span class="tab-icon">🧠</span> Engine
+            </button>
+            <button class="tab-btn" onclick="switchTab('memory', this)">
+                <span class="tab-icon">💾</span> Memory
+            </button>
+            <button class="tab-btn" onclick="switchTab('automations', this)">
+                <span class="tab-icon">⚡</span> Automations
+            </button>
         </nav>
+
+        <div class="content-pane">
 
         <!-- General Tab -->
         <div id="general" class="tab-content active">
@@ -157,11 +312,6 @@
                 <div class="control-group">
                     <label data-i18n="settings_assistant_name">Name</label>
                     <input type="text" id="assistant-name" placeholder="Kruuboo">
-                    <label data-i18n="settings_native_lang">System Language</label>
-                    <select id="lang-selection">
-                        <option value="en-US">English (US)</option>
-                        <option value="si-LK">Sinhala</option>
-                    </select>
                     <label>Persona / Feeling</label>
                     <select id="feeling-selection">
                         <option value="siri">Siri (Concise & Voice-Optimized)</option>
@@ -184,7 +334,75 @@
             </div>
         </div>
 
-        <!-- Identity Tab -->
+        <!-- Languages Tab -->
+        <div id="languages" class="tab-content">
+            <!-- Response Language -->
+            <div class="section">
+                <div class="section-title">🗣️ Assistant Response Language</div>
+                <div class="control-group">
+                    <label>System Language</label>
+                    <select id="lang-selection">
+                        <option value="en-US">🇬🇧 English (US)</option>
+                        <option value="si-LK">🇱🇰 Sinhala (සිංහල)</option>
+                        <option value="ta-IN">🇮🇳 Tamil (தமிழ்)</option>
+                    </select>
+                    <span style="font-size:10px;color:#888;line-height:1.4;">The language the assistant will respond in. Make sure your chosen LLM supports this language.</span>
+                </div>
+            </div>
+
+            <!-- Speech-to-Text -->
+            <div class="section">
+                <div class="section-title">🎤 Speech-to-Text (STT)</div>
+                <div class="control-group">
+                    <label>STT Engine</label>
+                    <select id="stt-engine">
+                        <option value="local">Vosk — Local / Offline (English only)</option>
+                        <option value="whisper">OpenAI Whisper — Cloud (Multilingual incl. Sinhala)</option>
+                        <option value="browser">Web Speech API — Browser Native (Free)</option>
+                    </select>
+                    <label>STT Input Language</label>
+                    <select id="stt-lang">
+                        <option value="en-US">🇬🇧 English (US)</option>
+                        <option value="si-LK">🇱🇰 Sinhala (සිංහල)</option>
+                        <option value="ta-IN">🇮🇳 Tamil (தமிழ்)</option>
+                    </select>
+                    <span style="font-size:10px;color:#888;line-height:1.4;">⚠️ Sinhala STT requires <strong>OpenAI Whisper</strong> or <strong>Web Speech API</strong>. Vosk only supports English.</span>
+                </div>
+            </div>
+
+            <!-- Text-to-Speech -->
+            <div class="section">
+                <div class="section-title">🔊 Text-to-Speech (TTS)</div>
+                <div class="control-group">
+                    <label>TTS Engine</label>
+                    <select id="voice-mode">
+                        <option value="offline">gTTS — Free / Offline-capable (Supports Sinhala)</option>
+                        <option value="neural">ElevenLabs — Neural Voice Clone (English only)</option>
+                        <option value="google_cloud">Google Cloud TTS — Premium Sinhala voice</option>
+                    </select>
+                    <label>TTS Output Language</label>
+                    <select id="tts-lang">
+                        <option value="en">🇬🇧 English</option>
+                        <option value="si">🇱🇰 Sinhala (සිංහල)</option>
+                        <option value="ta">🇮🇳 Tamil</option>
+                    </select>
+                    <span style="font-size:10px;color:#888;line-height:1.4;">⚠️ ElevenLabs does <strong>not</strong> support Sinhala. Use gTTS or Google Cloud TTS for Sinhala output.</span>
+                </div>
+            </div>
+
+            <!-- API Keys for Voice Services -->
+            <div class="section">
+                <div class="section-title">🔑 Voice Service API Keys</div>
+                <div class="control-group">
+                    <label>ElevenLabs API Key <span style="color:#666;font-weight:400;">(Neural voice cloning — English)</span></label>
+                    <input type="password" id="eleven-key" placeholder="eb-...">
+                    <label>Google Cloud API Key <span style="color:#666;font-weight:400;">(Premium Sinhala/Tamil TTS)</span></label>
+                    <input type="password" id="google-tts-key" placeholder="AIza...">
+                    <span style="font-size:10px;color:#888;line-height:1.4;">Google Cloud TTS key enables the high-quality <strong>si-LK-Standard-A</strong> Sinhala voice. Get a key at <a href="#" style="color:var(--accent);">console.cloud.google.com</a>.</span>
+                </div>
+            </div>
+        </div>
+
         <div id="identity" class="tab-content">
             <div class="identity-grid">
                 <div class="upload-card" id="avatar-btn">
@@ -199,7 +417,59 @@
             <input type="file" id="avatar-input" style="display:none" accept="image/*">
             <input type="file" id="voice-input" style="display:none" accept="audio/*">
 
-            <div class="section" style="margin-top:20px">
+            <!-- Avatar Display Mode -->
+            <div class="section">
+                <div class="section-title">✨ Avatar Display Mode</div>
+                <div class="control-group">
+                    <label>Visual Mode</label>
+                    <select id="avatar-mode">
+                        <option value="globe">Glowing Globe / Orb (Default)</option>
+                        <option value="vrm">3D VRM Model (Interactive Avatar)</option>
+                    </select>
+                    <span style="font-size:10px;color:#888;line-height:1.4;">Choose between the classic floating glowing orb or a real-time 3D VRM humanoid avatar.</span>
+                </div>
+                <div class="control-group" id="vrm-display-mode-group" style="margin-top: 12px;">
+                    <label>3D Avatar Display Size / Framing</label>
+                    <select id="vrm-display-mode">
+                        <option value="orb">🔮 Orb Framing (Head / Bust in Circular Orb)</option>
+                        <option value="full">🧍 Full Avatar (Standing Full Body Character)</option>
+                    </select>
+                    <span style="font-size:10px;color:#888;line-height:1.4;">Select whether the 3D character is framed inside the floating circular orb or rendered as a standing full avatar.</span>
+                </div>
+                <div class="control-group" id="avatar-scale-group" style="margin-top: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label>Avatar Scale / Size</label>
+                        <span id="avatar-scale-val" style="font-size: 11px; font-weight: 600; color: #6366f1;">100%</span>
+                    </div>
+                    <input type="range" id="avatar-scale" min="0.5" max="2.0" step="0.05" value="1.0" style="width: 100%; margin-top: 6px; accent-color: var(--accent);">
+                    <span style="font-size:10px;color:#888;line-height:1.4;">Scale the avatar or orb on your screen (50% – 200%). You can also scroll on the desktop avatar to resize it dynamically.</span>
+                </div>
+            </div>
+
+            <!-- 3D VRM Avatar Settings & Live 3D Preview -->
+            <div class="section" id="vrm-settings-section">
+                <div class="section-title">🎭 3D VRM Model & Live Preview</div>
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 16px; margin-top: 8px;">
+                    <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 12px;">
+                        <div style="width: 120px; height: 120px; border-radius: 16px; background: radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.98)); border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 8px 24px rgba(0,0,0,0.5); position: relative; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+                            <canvas id="settings-vrm-canvas" style="width: 100%; height: 100%; border-radius: 16px; cursor: grab;"></canvas>
+                            <div id="settings-vrm-spinner" style="position: absolute; font-size: 11px; color: #888; pointer-events: none;">Loading 3D...</div>
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-size: 13px; font-weight: 600; color: #fff;" id="vrm-model-status">Bundled Default VRM Avatar</div>
+                            <div id="vrm-model-details" style="font-size: 11px; color: #94a3b8; margin-top: 4px; line-height: 1.4;">Drag the preview to rotate the 3D model. Features real-time breathing, blinking, and speech lip-sync.</div>
+                            <div style="margin-top: 10px; display: flex; gap: 8px;">
+                                <button type="button" id="upload-vrm-btn" style="flex: 2; background: var(--accent, #6366f1); color: white; border: none; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;">Upload Custom .VRM</button>
+                                <button type="button" id="reset-vrm-btn" style="flex: 1; background: rgba(255,255,255,0.08); color: #ccc; border: 1px solid rgba(255,255,255,0.15); padding: 8px 10px; border-radius: 8px; font-size: 12px; cursor: pointer;">Reset Default</button>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="file" id="vrm-file-input" style="display:none" accept=".vrm">
+                    <p style="font-size:10px;color:#777;margin:4px 0 0 0;line-height:1.3;">Supports VRM 0.0 & 1.0 humanoid and creature models from VRoid Studio, Booth, etc.</p>
+                </div>
+            </div>
+
+            <div class="section">
                 <div class="section-title">Character & Pet Animations</div>
                 <div class="identity-grid" style="grid-template-columns: repeat(4, 1fr);">
                     <div class="upload-card" id="pet-idle-btn">
@@ -238,7 +508,7 @@
                 <button data-i18n="settings_installed">Active</button>
             </div>
 
-            <div class="section-title" style="margin-top:20px">Google Plugins (Connectors)</div>
+            <div class="section-title">Google Plugins (Connectors)</div>
             <div class="plugin-item" style="flex-direction: column; align-items: stretch; gap: 8px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="display: flex; align-items: center; gap: 8px;">📧 Gmail Plugin</span>
@@ -337,46 +607,39 @@
                 <div class="control-group">
                     <label data-i18n="settings_model_sel">Model Authority</label>
                     <select id="llm-model">
-                        <optgroup label="── Local Models ──">
-                            <option value="llama-3" selected>Phi-3 Mini (Default Local)</option>
-                            <option value="mistral">Mistral 7B (Local)</option>
+                        <optgroup label="🔒 On-Device (Private, No Internet)">
+                            <option value="gemma-litert" selected>⭐ Gemma 4 E2B — Fast · Multilingual · GPU Accelerated</option>
+                            <option value="llama-3">Phi-3 Mini — Basic · English Only · CPU</option>
+                            <option value="mistral">Mistral 7B — Moderate · English · CPU</option>
                         </optgroup>
-                        <optgroup label="── Cloud Models ──">
-                            <option value="gpt-4">GPT-4 Turbo (OpenAI)</option>
-                            <option value="claude-3">Claude 3.5 Sonnet (Anthropic)</option>
-                            <option value="deepseek">DeepSeek V3 (High Efficiency)</option>
-                            <option value="grok">Grok 2 (X.AI)</option>
-                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Google)</option>
+                        <optgroup label="☁️ Cloud (Requires API Key + Internet)">
+                            <option value="gpt-4">GPT-4 Turbo — Premium · Strongest Reasoning</option>
+                            <option value="claude-3">Claude 3.5 Sonnet — Premium · Best Writing Quality</option>
+                            <option value="deepseek">DeepSeek V3 — Affordable · Great for Code</option>
+                            <option value="grok">Grok 2 — Real-time Knowledge · Witty</option>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash — Free Tier · Fast · Multimodal</option>
                         </optgroup>
                     </select>
+                    <div id="model-capability-hint" style="font-size:10px; color:#777; margin-top:4px; line-height:1.5; padding:0 2px;"></div>
                     <label data-i18n="settings_api_key">Provider API Key</label>
                     <input type="password" id="api-key" placeholder="Enter API key for selected provider...">
                 </div>
             </div>
-            <div class="section" style="margin-top:20px">
-                <div class="section-title">Speech-to-Text (STT)</div>
-                <div class="control-group">
-                    <label>STT Engine</label>
-                    <select id="stt-engine">
-                        <option value="local">Vosk (Local - Offline)</option>
-                        <option value="whisper">OpenAI Whisper (Cloud - Requires API Key)</option>
-                        <option value="browser">Web Speech API (Browser Native - Free)</option>
-                    </select>
+            <div id="litert-section" class="section" style="border-color: rgba(52,211,153,0.3); background: rgba(52,211,153,0.04);">
+                <div class="section-title" style="color:#34d399;">🚀 LiteRT-LM Model (Gemma 4)</div>
+                <div id="litert-status-container" style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                    <div>
+                        <p id="litert-status-text" style="font-size:12px; color:#aaa; margin:0; line-height:1.5;">Checking model status...</p>
+                        <p id="litert-model-size" style="font-size:10px; color:#666; margin:3px 0 0;"></p>
+                    </div>
+                    <button id="litert-download-btn" onclick="downloadLiteRTModel()" style="display:none; padding:7px 14px; border-radius:10px; border:none; background:#34d399; color:#000; font-size:11px; font-weight:600; cursor:pointer; white-space:nowrap;">⬇ Download</button>
                 </div>
             </div>
-            <div class="section" style="margin-top:20px">
-                <div class="section-title" data-i18n="settings_voice_engine">Voice Generation (TTS)</div>
-                <div class="control-group">
-                    <label data-i18n="settings_v_mode">Synthesis Engine</label>
-                    <select id="voice-mode">
-                        <option value="offline">Offline (Private/Local)</option>
-                        <option value="neural">Neural (ElevenLabs API)</option>
-                    </select>
-                    <label data-i18n="settings_eleven_key">ElevenLabs Key</label>
-                    <input type="password" id="eleven-key" placeholder="eb-...">
-                </div>
+            <div class="section" style="margin-top:20px; border-color: rgba(107,76,255,0.3); background: rgba(107,76,255,0.04);">
+                <div class="section-title" style="color:var(--accent);">🌐 Voice & Language Settings</div>
+                <p style="font-size:12px;color:#888;margin:0;line-height:1.5;">STT engine, TTS engine, output language, and voice API keys have moved to the <strong style="color:white;">🌐 Languages</strong> tab for better organisation.</p>
             </div>
-            <div class="section" style="margin-top:20px">
+            <div class="section">
                 <div class="section-title">Vision Settings</div>
                 <div class="control-group">
                     <label>Object Recognition Mode</label>
@@ -384,6 +647,16 @@
                         <option value="cloud">Cloud (LLM Configured)</option>
                         <option value="local">Local (On-Device MobileNet-SSD)</option>
                     </select>
+                </div>
+            </div>
+            <div class="section" style="margin-top:20px; border-color: rgba(255,200,0,0.3); background: rgba(255,180,0,0.05);">
+                <div class="section-title" style="color: #f0b400;">🛡️ Privacy Mode</div>
+                <div style="display:flex; align-items:flex-start; gap:12px; padding: 4px 0 8px;">
+                    <input type="checkbox" id="privacy-mode" style="width:18px; height:18px; margin-top:2px; cursor:pointer; accent-color: #f0b400; flex-shrink:0;">
+                    <label for="privacy-mode" style="font-size:12px; color:#ccc; cursor:pointer; line-height:1.5;">
+                        <strong style="color:#f0d000; display:block; margin-bottom:3px;">Enable Privacy Mode for Cloud LLM</strong>
+                        When enabled, your <strong>personal memories</strong>, <strong>chat history</strong>, and <strong>sensitive data</strong> (names, emails, phone numbers) are stripped before each request is sent to a cloud AI provider. Responses may be less personalised.
+                    </label>
                 </div>
             </div>
         </div>
@@ -493,26 +766,69 @@
         </div>
 
         <button id="save-settings" class="save-btn" data-i18n="settings_save">Save & Sync</button>
+
+        </div><!-- end content-pane -->
+        </div><!-- end settings-body -->
     </div>
 
-    <script>
-        const savedSettings = JSON.parse(localStorage.getItem('nexus-settings')) || {
-            name: 'Kruuboo', lang: 'en-US', model: 'llama-3', feeling: 'siri', 
-            apiKey: '', elevenKey: '', voiceMode: 'offline', voiceActivation: false,
-            sttEngine: 'local', objectRecognitionMode: 'cloud'
-        };
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+        const savedSettings = (window.aiBackend && window.aiBackend.getSettingsSync) 
+            ? window.aiBackend.getSettingsSync() 
+            : (JSON.parse(localStorage.getItem('nexus-settings')) || {
+                name: 'Kruuboo', lang: 'en-US', model: 'llama-3', feeling: 'siri', 
+                apiKey: '', elevenKey: '', googleKey: '', voiceMode: 'offline', voiceActivation: false,
+                sttEngine: 'local', sttLang: 'en-US', ttsLang: 'en',
+                objectRecognitionMode: 'cloud', privacyMode: false, avatarMode: 'globe'
+            });
 
         // UI Fill
         document.getElementById('assistant-name').value = savedSettings.name || '';
         document.getElementById('lang-selection').value = savedSettings.lang || 'en-US';
         document.getElementById('feeling-selection').value = savedSettings.feeling || 'siri';
-        document.getElementById('llm-model').value = savedSettings.model || 'gpt-4';
+        document.getElementById('llm-model').value = savedSettings.model || 'gemma-litert';
         document.getElementById('api-key').value = savedSettings.apiKey || '';
+
+        // Model capability hint
+        const modelHints = {
+            'gemma-litert': '🔒 Runs entirely on your device — your data never leaves. Supports 140+ languages including Sinhala. Uses GPU for fast responses.',
+            'llama-3': '🔒 Private, offline CPU inference. Basic quality, English-focused. Good for simple tasks.',
+            'mistral': '🔒 Private, offline CPU inference. Better than Phi-3 but slower. English only.',
+            'gpt-4': '☁️ Best-in-class reasoning. Excels at complex analysis, math, and coding. Requires OpenAI API key ($).',
+            'claude-3': '☁️ Exceptional writing quality and nuance. Great for creative, empathetic conversations. Requires Anthropic key ($).',
+            'deepseek': '☁️ Excellent coder at low cost. Strong technical reasoning at a fraction of GPT-4 price.',
+            'grok': '☁️ Real-time internet knowledge. Unfiltered, witty personality. Requires X.AI key ($).',
+            'gemini-1.5-flash': '☁️ Free tier available. Fast multimodal model (text + images). Good all-rounder from Google.'
+        };
+        function updateModelHint() {
+            const model = document.getElementById('llm-model').value;
+            document.getElementById('model-capability-hint').textContent = modelHints[model] || '';
+        }
+        document.getElementById('llm-model').addEventListener('change', updateModelHint);
+        updateModelHint();
         document.getElementById('eleven-key').value = savedSettings.elevenKey || '';
+        document.getElementById('google-tts-key').value = savedSettings.googleKey || '';
         document.getElementById('voice-mode').value = savedSettings.voiceMode || 'offline';
         document.getElementById('voice-activation').checked = savedSettings.voiceActivation || false;
         document.getElementById('stt-engine').value = savedSettings.sttEngine || 'local';
+        document.getElementById('stt-lang').value = savedSettings.sttLang || 'en-US';
+        document.getElementById('tts-lang').value = savedSettings.ttsLang || 'en';
         document.getElementById('object-recognition-mode').value = savedSettings.objectRecognitionMode || 'cloud';
+        document.getElementById('privacy-mode').checked = savedSettings.privacyMode || false;
+        document.getElementById('avatar-mode').value = savedSettings.avatarMode || 'globe';
+        document.getElementById('vrm-display-mode').value = savedSettings.vrmDisplayMode || 'orb';
+        document.getElementById('vrm-display-mode').addEventListener('change', () => {
+            if (typeof applyPreviewFraming === 'function') applyPreviewFraming();
+        });
+        document.getElementById('avatar-scale').value = savedSettings.avatarScale || 1.0;
+        document.getElementById('avatar-scale-val').textContent = Math.round((savedSettings.avatarScale || 1.0) * 100) + '%';
+        document.getElementById('avatar-scale').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value) || 1.0;
+            document.getElementById('avatar-scale-val').textContent = Math.round(val * 100) + '%';
+        });
 
         // Load Workspace folder setting from FastAPI backend
         async function loadWorkspaceDir() {
@@ -565,12 +881,96 @@
 
         document.getElementById('lang-selection').onchange = (e) => loadLocales(e.target.value);
 
+        // ── LiteRT-LM Model Management ──────────────────────────
+        async function checkLiteRTStatus() {
+            try {
+                const port = (window.aiBackend && window.aiBackend.port) || localStorage.getItem('backend-port') || '8000';
+                const res = await fetch(`http://127.0.0.1:${port}/litert/status`);
+                const data = await res.json();
+                const statusText = document.getElementById('litert-status-text');
+                const sizeText = document.getElementById('litert-model-size');
+                const downloadBtn = document.getElementById('litert-download-btn');
+
+                if (data.litert_model_downloaded) {
+                    statusText.innerHTML = '<strong style="color:#34d399;">✅ Gemma 4 E2B model ready</strong>';
+                    sizeText.textContent = `Model size: ${data.litert_model_size_mb} MB | Engine: ${data.engine}`;
+                    downloadBtn.style.display = 'none';
+                } else {
+                    statusText.innerHTML = '<strong style="color:#f0b400;">⚠ Model not downloaded</strong><br>Download the Gemma 4 E2B model (~1.5 GB) for fast local inference.';
+                    sizeText.textContent = data.gguf_available ? 'Currently using legacy Phi-3/Mistral fallback' : 'No local model available';
+                    downloadBtn.style.display = 'block';
+                }
+            } catch (e) {
+                document.getElementById('litert-status-text').innerHTML = '<span style="color:#ff6b6b;">Backend not reachable</span>';
+            }
+        }
+
+        async function downloadLiteRTModel() {
+            const btn = document.getElementById('litert-download-btn');
+            const statusText = document.getElementById('litert-status-text');
+            btn.disabled = true;
+            btn.textContent = '⏳ Starting...';
+            try {
+                const port = (window.aiBackend && window.aiBackend.port) || localStorage.getItem('backend-port') || '8000';
+                const res = await fetch(`http://127.0.0.1:${port}/litert/download`, { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'already_downloaded') {
+                    statusText.innerHTML = '<strong style="color:#34d399;">✅ Already downloaded</strong>';
+                    btn.style.display = 'none';
+                } else {
+                    statusText.innerHTML = '<strong style="color:#34d399;">⬇ Downloading...</strong><br>This may take several minutes. Check back later.';
+                    btn.textContent = '⬇ Downloading...';
+                    // Poll for completion every 10s
+                    const poll = setInterval(async () => {
+                        try {
+                            const r = await fetch(`http://127.0.0.1:${port}/litert/status`);
+                            const d = await r.json();
+                            if (d.litert_model_downloaded) {
+                                clearInterval(poll);
+                                checkLiteRTStatus();
+                            }
+                        } catch(e) {}
+                    }, 10000);
+                }
+            } catch (e) {
+                statusText.innerHTML = '<span style="color:#ff6b6b;">Download failed. Check console.</span>';
+                btn.disabled = false;
+                btn.textContent = '⬇ Retry';
+            }
+        }
+
         function switchTab(id, btn) {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-            if (btn) btn.classList.add('active');
+            const targetContent = document.getElementById(id);
+            if (targetContent) targetContent.classList.add('active');
+            if (btn) {
+                btn.classList.add('active');
+            } else {
+                const matchingBtn = document.querySelector(`.tab-btn[onclick*="${id}"]`);
+                if (matchingBtn) matchingBtn.classList.add('active');
+            }
+            if (id === 'identity' && typeof isPreviewInitialized !== 'undefined' && isPreviewInitialized) {
+                setTimeout(() => {
+                    if (previewRenderer && previewCanvas) {
+                        const rect = previewCanvas.getBoundingClientRect();
+                        const w = rect.width || 120;
+                        const h = rect.height || 120;
+                        previewRenderer.setSize(w, h, false);
+                        if (previewCamera) {
+                            previewCamera.aspect = w / h;
+                            previewCamera.updateProjectionMatrix();
+                        }
+                    }
+                }, 50);
+            }
+            // Auto-check LiteRT status when Engine tab is opened
+            if (id === 'ai' && typeof checkLiteRTStatus === 'function') checkLiteRTStatus();
         }
+        window.switchTab = switchTab;
+        window.saveWorkspaceDir = saveWorkspaceDir;
+        window.checkLiteRTStatus = checkLiteRTStatus;
+        window.downloadLiteRTModel = downloadLiteRTModel;
 
         document.getElementById('save-settings').onclick = async () => {
             const data = {
@@ -579,15 +979,27 @@
                 model: document.getElementById('llm-model').value,
                 apiKey: document.getElementById('api-key').value,
                 elevenKey: document.getElementById('eleven-key').value,
+                googleKey: document.getElementById('google-tts-key').value,
                 voiceMode: document.getElementById('voice-mode').value,
                 voiceActivation: document.getElementById('voice-activation').checked,
                 sttEngine: document.getElementById('stt-engine').value,
+                sttLang: document.getElementById('stt-lang').value,
+                ttsLang: document.getElementById('tts-lang').value,
                 objectRecognitionMode: document.getElementById('object-recognition-mode').value,
-                feeling: document.getElementById('feeling-selection').value
+                feeling: document.getElementById('feeling-selection').value,
+                privacyMode: document.getElementById('privacy-mode').checked,
+                avatarMode: document.getElementById('avatar-mode').value,
+                vrmDisplayMode: document.getElementById('vrm-display-mode').value,
+                avatarScale: parseFloat(document.getElementById('avatar-scale').value) || 1.0
             };
             // Save generic settings
             localStorage.setItem('nexus-settings', JSON.stringify(data));
-            window.aiBackend.notifySettingsUpdated();
+            if (window.aiBackend && window.aiBackend.saveSettings) {
+                await window.aiBackend.saveSettings(data);
+            }
+            if (window.aiBackend && window.aiBackend.notifySettingsUpdated) {
+                window.aiBackend.notifySettingsUpdated(data);
+            }
 
             // ---- Persona handling ----
             const persona = {
@@ -627,17 +1039,25 @@
             }
             const active = await window.aiBackend.getActivePersona();
             if (active) {
-                document.getElementById('persona-select').value = active.id;
-                document.getElementById('assistant-name').value = active.name;
-                document.getElementById('lang-selection').value = active.language;
+                const personaSelect = document.getElementById('persona-select');
+                if (personaSelect) personaSelect.value = active.id;
+                const nameInput = document.getElementById('assistant-name');
+                if (nameInput) nameInput.value = active.name;
+                const langSelect = document.getElementById('lang-selection');
+                if (langSelect) langSelect.value = active.language;
             }
-            document.getElementById('persona-select').addEventListener('change', async (e) => {
-                const selected = personas.find(p => p.id === e.target.value);
-                if (selected) {
-                    document.getElementById('assistant-name').value = selected.name;
-                    document.getElementById('lang-selection').value = selected.language;
-                }
-            });
+            const personaSelectEl = document.getElementById('persona-select');
+            if (personaSelectEl) {
+                personaSelectEl.addEventListener('change', async (e) => {
+                    const selected = personas.find(p => p.id === e.target.value);
+                    if (selected) {
+                        const nameEl = document.getElementById('assistant-name');
+                        if (nameEl) nameEl.value = selected.name;
+                        const langEl = document.getElementById('lang-selection');
+                        if (langEl) langEl.value = selected.language;
+                    }
+                });
+            }
         }
         loadPersonas();
 
@@ -758,6 +1178,314 @@
         document.getElementById('pet-input-listening').onchange = function() { handlePetUpload(this, 'listening'); };
         document.getElementById('pet-input-thinking').onchange = function() { handlePetUpload(this, 'thinking'); };
         document.getElementById('pet-input-speaking').onchange = function() { handlePetUpload(this, 'speaking'); };
+
+        // ══════════════════════════════════════════════════════════════════════
+        // 3D VRM Model Upload & Live Interactive Preview in Settings
+        // ══════════════════════════════════════════════════════════════════════
+        const uploadVrmBtn = document.getElementById('upload-vrm-btn');
+        const resetVrmBtn = document.getElementById('reset-vrm-btn');
+        const vrmFileInput = document.getElementById('vrm-file-input');
+        const vrmStatusText = document.getElementById('vrm-model-status');
+
+        let previewRenderer, previewScene, previewCamera, previewVrm, previewClock;
+        let isPreviewDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        function initSettingsVRMPreview() {
+            const canvas = document.getElementById('settings-vrm-canvas');
+            if (!canvas || previewRenderer) return;
+
+            previewScene = new THREE.Scene();
+            previewCamera = new THREE.PerspectiveCamera(30.0, 1.0, 0.1, 20.0);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.6);
+            previewScene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+            dirLight.position.set(1.0, 2.0, 1.5).normalize();
+            previewScene.add(dirLight);
+
+            const rimLight = new THREE.DirectionalLight(0x7c3aed, 1.4);
+            rimLight.position.set(-1.0, 1.5, -1.0).normalize();
+            previewScene.add(rimLight);
+
+            previewRenderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                alpha: true,
+                antialias: true
+            });
+            previewRenderer.setSize(120, 120, false);
+            previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            previewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+
+            previewClock = new THREE.Clock();
+
+            // Drag to rotate avatar preview
+            canvas.addEventListener('mousedown', (e) => {
+                isPreviewDragging = true;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+            window.addEventListener('mouseup', () => { isPreviewDragging = false; });
+            window.addEventListener('mousemove', (e) => {
+                if (!isPreviewDragging || !previewVrm) return;
+                const deltaX = e.clientX - previousMousePosition.x;
+                previewVrm.scene.rotation.y += deltaX * 0.02;
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            loadSettingsVRMModel();
+            animateSettingsVRM();
+        }
+
+        async function loadSettingsVRMModel() {
+            const spinner = document.getElementById('settings-vrm-spinner');
+            if (spinner) {
+                spinner.style.display = 'block';
+                spinner.innerText = 'Loading 3D...';
+            }
+
+            let modelUrl = './assets/models/default_avatar.vrm';
+            try {
+                const infoRes = await fetch(`${window.aiBackend.baseUrl}/vrm_info?t=${Date.now()}`);
+                if (infoRes.ok) {
+                    const info = await infoRes.json();
+                    if (info.has_custom) {
+                        modelUrl = `${window.aiBackend.baseUrl}/avatar_vrm?t=${Date.now()}`;
+                    }
+                }
+            } catch(e) {}
+
+            const loader = new GLTFLoader();
+            loader.register((parser) => new VRMLoaderPlugin(parser));
+
+            loader.load(
+                modelUrl,
+                (gltf) => {
+                    if (previewVrm) {
+                        previewScene.remove(previewVrm.scene);
+                        VRMUtils.deepDispose(previewVrm.scene);
+                        previewVrm = null;
+                    }
+
+                    const vrm = gltf.userData.vrm;
+                    if (!vrm) return;
+
+                    VRMUtils.rotateVRM0(vrm);
+                    previewScene.add(vrm.scene);
+                    previewVrm = vrm;
+
+                    applyPreviewFraming();
+
+                    if (spinner) spinner.style.display = 'none';
+                },
+                undefined,
+                (err) => {
+                    console.error("Preview load error:", err);
+                    if (spinner) spinner.innerText = "Error";
+                }
+            );
+        }
+
+        function applyPreviewFraming() {
+            if (!previewVrm || !previewCamera) return;
+            const mode = document.getElementById('vrm-display-mode')?.value || 'orb';
+            const box = new THREE.Box3().setFromObject(previewVrm.scene);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            const headBone = previewVrm.humanoid?.getNormalizedBoneNode('head');
+
+            if (mode === 'full') {
+                const targetY = center.y + (size.y * 0.05);
+                const camDist = Math.max(1.1, size.y * 1.55);
+                previewCamera.position.set(center.x, targetY, center.z + camDist);
+                previewCamera.lookAt(center.x, targetY, center.z);
+            } else {
+                if (headBone) {
+                    const headPos = new THREE.Vector3();
+                    headBone.getWorldPosition(headPos);
+                    const camDist = Math.max(0.44, Math.min(1.0, size.y * 0.42));
+                    previewCamera.position.set(headPos.x, headPos.y - 0.03, headPos.z + camDist);
+                    previewCamera.lookAt(headPos.x, headPos.y - 0.03, headPos.z);
+                } else {
+                    const targetY = center.y + (size.y * 0.15);
+                    const camDist = Math.max(0.48, size.y * 0.75);
+                    previewCamera.position.set(center.x, targetY, center.z + camDist);
+                    previewCamera.lookAt(center.x, targetY, center.z);
+                }
+            }
+        }
+
+        function animateSettingsVRM() {
+            requestAnimationFrame(animateSettingsVRM);
+            if (!previewRenderer || !previewScene || !previewCamera) return;
+
+            const delta = previewClock.getDelta();
+            const elapsedTime = previewClock.getElapsedTime();
+
+            if (previewVrm) {
+                const feeling = document.getElementById('feeling-selection')?.value || 'professional';
+                const breathSpeed = (feeling === 'energetic') ? 3.0 : (feeling === 'lethargic') ? 1.4 : 2.2;
+                const breath = Math.sin(elapsedTime * breathSpeed) * 0.015;
+                const armSway = Math.sin(elapsedTime * 1.8) * 0.02;
+
+                const spine = previewVrm.humanoid?.getNormalizedBoneNode('spine');
+                const leftUpperArm = previewVrm.humanoid?.getNormalizedBoneNode('leftUpperArm');
+                const rightUpperArm = previewVrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+                const leftLowerArm = previewVrm.humanoid?.getNormalizedBoneNode('leftLowerArm');
+                const rightLowerArm = previewVrm.humanoid?.getNormalizedBoneNode('rightLowerArm');
+
+                let targetSpineX = breath;
+                let targetSpineY = 0;
+                let targetLeftUpperArmZ = -1.22 + armSway;
+                let targetRightUpperArmZ = 1.22 - armSway;
+                let targetLeftLowerArmX = -0.25;
+                let targetRightLowerArmX = -0.25;
+
+                if (feeling === 'energetic') {
+                    targetLeftUpperArmZ = -1.10 + armSway * 1.5;
+                    targetRightUpperArmZ = 1.10 - armSway * 1.5;
+                    targetLeftLowerArmX = -0.45;
+                    targetRightLowerArmX = -0.45;
+                } else if (feeling === 'romantic') {
+                    targetLeftUpperArmZ = -1.14;
+                    targetRightUpperArmZ = 1.14;
+                    targetLeftLowerArmX = -0.40;
+                    targetRightLowerArmX = -0.40;
+                } else if (feeling === 'sarcastic' || feeling === 'arrogant') {
+                    targetSpineY = 0.04;
+                    targetRightUpperArmZ = 0.85;
+                    targetRightLowerArmX = -0.95;
+                } else if (feeling === 'lethargic') {
+                    targetSpineX = 0.08 + (breath * 0.5);
+                    targetLeftUpperArmZ = -1.35;
+                    targetRightUpperArmZ = 1.35;
+                }
+
+                if (spine) spine.rotation.x = THREE.MathUtils.lerp(spine.rotation.x, targetSpineX, 0.08);
+                if (leftUpperArm) {
+                    leftUpperArm.rotation.z = THREE.MathUtils.lerp(leftUpperArm.rotation.z, targetLeftUpperArmZ, 0.08);
+                    leftUpperArm.rotation.x = 0.14;
+                    leftUpperArm.rotation.y = 0.08;
+                }
+                if (rightUpperArm) {
+                    rightUpperArm.rotation.z = THREE.MathUtils.lerp(rightUpperArm.rotation.z, targetRightUpperArmZ, 0.08);
+                    rightUpperArm.rotation.x = 0.14;
+                    rightUpperArm.rotation.y = -0.08;
+                }
+                if (leftLowerArm) {
+                    leftLowerArm.rotation.x = THREE.MathUtils.lerp(leftLowerArm.rotation.x, targetLeftLowerArmX, 0.08);
+                    leftLowerArm.rotation.z = -0.12;
+                    leftLowerArm.rotation.y = 0.22;
+                }
+                if (rightLowerArm) {
+                    rightLowerArm.rotation.x = THREE.MathUtils.lerp(rightLowerArm.rotation.x, targetRightLowerArmX, 0.08);
+                    rightLowerArm.rotation.z = 0.12;
+                    rightLowerArm.rotation.y = -0.22;
+                }
+
+                // Eye blinking
+                const blinkCycle = (elapsedTime % 4.0);
+                let blinkVal = 0;
+                if (blinkCycle > 3.8) {
+                    blinkVal = Math.sin(((blinkCycle - 3.8) / 0.2) * Math.PI);
+                }
+                if (previewVrm.expressionManager) {
+                    previewVrm.expressionManager.setValue('blink', blinkVal);
+                    previewVrm.expressionManager.update();
+                }
+
+                previewVrm.update(delta);
+            }
+
+            previewRenderer.render(previewScene, previewCamera);
+        }
+
+        async function checkVRMStatus() {
+            try {
+                const res = await fetch(`${window.aiBackend.baseUrl}/vrm_info?t=${Date.now()}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.has_custom) {
+                        if (vrmStatusText) vrmStatusText.innerHTML = '✨ <strong style="color: #38ef7d;">Custom VRM Avatar Active</strong>';
+                        if (resetVrmBtn) resetVrmBtn.style.display = 'inline-block';
+                        return;
+                    }
+                }
+                if (vrmStatusText) vrmStatusText.innerHTML = '📦 Bundled Default VRM Avatar';
+                if (resetVrmBtn) resetVrmBtn.style.display = 'none';
+            } catch (e) {
+                if (vrmStatusText) vrmStatusText.innerHTML = '📦 Bundled Default VRM Avatar';
+            }
+        }
+        checkVRMStatus();
+        initSettingsVRMPreview();
+
+        if (uploadVrmBtn && vrmFileInput) {
+            uploadVrmBtn.onclick = () => vrmFileInput.click();
+            vrmFileInput.onchange = async function() {
+                const file = this.files[0];
+                if (!file) return;
+                if (!file.name.toLowerCase().endsWith('.vrm')) {
+                    alert("Please select a valid .vrm 3D model file.");
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    uploadVrmBtn.disabled = true;
+                    uploadVrmBtn.textContent = 'Uploading...';
+                    const res = await fetch(`${window.aiBackend.baseUrl}/upload_vrm`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        // Switch visual mode to VRM
+                        document.getElementById('avatar-mode').value = 'vrm';
+                        const currentSettings = (window.aiBackend && window.aiBackend.getSettingsSync) ? window.aiBackend.getSettingsSync() : {};
+                        currentSettings.avatarMode = 'vrm';
+                        if (window.aiBackend && window.aiBackend.saveSettings) {
+                            await window.aiBackend.saveSettings(currentSettings);
+                        }
+                        localStorage.setItem('nexus-settings', JSON.stringify(currentSettings));
+
+                        alert("Custom 3D VRM model uploaded successfully! Switched to 3D VRM mode.");
+                        checkVRMStatus();
+                        loadSettingsVRMModel();
+                        if (window.aiBackend && window.aiBackend.notifySettingsUpdated) {
+                            window.aiBackend.notifySettingsUpdated(currentSettings);
+                        }
+                    } else {
+                        alert("VRM Upload failed: " + (result.detail || "Unknown error"));
+                    }
+                } catch (err) {
+                    console.error("VRM upload error:", err);
+                    alert("VRM upload error: " + err.message);
+                } finally {
+                    uploadVrmBtn.disabled = false;
+                    uploadVrmBtn.textContent = 'Upload Custom .VRM';
+                }
+            };
+        }
+
+        if (resetVrmBtn) {
+            resetVrmBtn.onclick = async function() {
+                if (!confirm("Reset back to default bundled 3D VRM model?")) return;
+                try {
+                    await fetch(`${window.aiBackend.baseUrl}/avatar_vrm`, { method: 'DELETE' });
+                    alert("Reset to default VRM avatar.");
+                    checkVRMStatus();
+                    loadSettingsVRMModel();
+                    if (window.aiBackend && window.aiBackend.notifySettingsUpdated) {
+                        window.aiBackend.notifySettingsUpdated();
+                    }
+                } catch (err) {
+                    console.error("Reset VRM error:", err);
+                }
+            };
+        }
 
         // Color palette switching
         document.querySelectorAll('.color-swatch').forEach(swatch => {
@@ -1021,6 +1749,13 @@
                 console.error("Failed to fetch active IoT configurations:", err);
             }
         }
+
+        window.saveIoTConfig = saveIoTConfig;
+        window.addMemory = addMemory;
+        window.deleteMemory = deleteMemory;
+        window.addAutomation = addAutomation;
+        window.deleteAutomation = deleteAutomation;
+        window.fetchPairingQR = fetchPairingQR;
 
         // Initialize
         fetchPairingQR();

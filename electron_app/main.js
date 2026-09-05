@@ -139,8 +139,10 @@ function createMainWindow() {
 
 function createSettingsWindow() {
     settingsWindow = new BrowserWindow({
-        width: 600,
-        height: 700,
+        width: 800,
+        height: 720,
+        minWidth: 760,
+        minHeight: 580,
         show: false,
         frame: false,
         transparent: true,
@@ -153,6 +155,10 @@ function createSettingsWindow() {
         }
     });
 
+    settingsWindow.webContents.on('console-message', (event, level, message, line) => {
+        console.log(`[Settings Log] ${message} (line ${line})`);
+    });
+
     settingsWindow.loadFile('settings.html');
 }
 
@@ -160,14 +166,16 @@ function createOrbWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   
   orbWindow = new BrowserWindow({
-    width: 250,
-    height: 250,
-    x: Math.floor((width - 250) / 2),
+    width: 260,
+    height: 280,
+    minWidth: 160,
+    minHeight: 180,
+    x: Math.floor((width - 260) / 2),
     y: 20,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    resizable: false,
+    resizable: true,
     movable: true,
     hasShadow: false,
     webPreferences: {
@@ -175,6 +183,16 @@ function createOrbWindow() {
       nodeIntegration: false,
       contextIsolation: true
     }
+  });
+
+  orbWindow.on('resize', () => {
+    if (orbWindow && !orbWindow.isDestroyed()) {
+      orbWindow.webContents.send('window-resized');
+    }
+  });
+
+  orbWindow.webContents.on('console-message', (event, level, message, line) => {
+    console.log(`[Orb Log] ${message} (line ${line})`);
   });
 
   orbWindow.loadFile('orb.html');
@@ -254,13 +272,14 @@ app.whenReady().then(async () => {
     // This allows the renderer window to get permission for the microphone
     const { session } = require('electron');
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-        const url = webContents.getURL();
-        console.log(`Permission requested: ${permission} from ${url}`);
-        
-        if (permission === 'media' || permission === 'audio-capture') {
+        console.log(`[Main] Permission requested: ${permission}`);
+        if (['media', 'microphone', 'audio-capture', 'speech-recognition'].includes(permission)) {
             return callback(true);
         }
-        callback(false);
+        callback(true);
+    });
+    session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+        return true;
     });
 
     createMainWindow();
@@ -305,7 +324,7 @@ app.on('window-all-closed', function () {
 // IPC Handlers
 ipcMain.handle('ask-ai', async (event, requestData) => {
     try {
-        const response = await fetch('http://127.0.0.1:8000/query', {
+        const response = await fetch(`http://127.0.0.1:${backendPort}/query`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
@@ -332,7 +351,7 @@ ipcMain.on('ask-ai-stream', async (event, requestData) => {
     streamingAbortController = new AbortController();
     
     try {
-        const response = await fetch('http://127.0.0.1:8000/stream_query', {
+        const response = await fetch(`http://127.0.0.1:${backendPort}/stream_query`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData),
@@ -385,11 +404,93 @@ ipcMain.on('toggle-main-window', () => {
 
 ipcMain.on('hide-orb-window', () => { if (orbWindow) orbWindow.hide(); });
 ipcMain.on('show-orb-window', () => { if (orbWindow) orbWindow.show(); });
-ipcMain.on('open-settings-window', () => { if (settingsWindow) { settingsWindow.show(); settingsWindow.focus(); } });
+ipcMain.on('open-settings-window', () => {
+    console.log('[Main] Received open-settings-window IPC');
+    if (!settingsWindow || settingsWindow.isDestroyed()) {
+        createSettingsWindow();
+    }
+    settingsWindow.center();
+    settingsWindow.show();
+    settingsWindow.focus();
+});
 ipcMain.on('close-settings-window', () => { if (settingsWindow) settingsWindow.hide(); });
-ipcMain.on('settings-updated', () => {
-    if (orbWindow && !orbWindow.isDestroyed()) orbWindow.webContents.send('refresh-settings');
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('refresh-settings');
+
+// Central persistent settings store across all windows
+const settingsFilePath = path.join(app.getPath('userData'), 'nexus_settings.json');
+function loadSettingsFromDisk() {
+    try {
+        if (fs.existsSync(settingsFilePath)) {
+            return JSON.parse(fs.readFileSync(settingsFilePath, 'utf8'));
+        }
+    } catch (e) {
+        console.error('Error reading settings file:', e);
+    }
+    return {
+        name: 'Kruuboo',
+        lang: 'en-US',
+        model: 'llama-3',
+        feeling: 'siri',
+        apiKey: '',
+        elevenKey: '',
+        googleKey: '',
+        voiceMode: 'offline',
+        voiceActivation: false,
+        sttEngine: 'local',
+        sttLang: 'en-US',
+        ttsLang: 'en',
+        objectRecognitionMode: 'cloud',
+        privacyMode: false,
+        avatarMode: 'globe',
+        vrmDisplayMode: 'orb',
+        avatarScale: 1.0
+    };
+}
+
+function saveSettingsToDisk(data) {
+    try {
+        const current = loadSettingsFromDisk();
+        const merged = { ...current, ...data };
+        fs.writeFileSync(settingsFilePath, JSON.stringify(merged, null, 2), 'utf8');
+        return merged;
+    } catch (e) {
+        console.error('Error writing settings file:', e);
+        return data;
+    }
+}
+
+function broadcastSettings(data) {
+    const settings = data || loadSettingsFromDisk();
+    if (orbWindow && !orbWindow.isDestroyed()) orbWindow.webContents.send('refresh-settings', settings);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('refresh-settings', settings);
+    if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.webContents.send('refresh-settings', settings);
+}
+
+ipcMain.on('get-settings-sync', (event) => {
+    event.returnValue = loadSettingsFromDisk();
+});
+
+ipcMain.handle('get-settings', async () => {
+    return loadSettingsFromDisk();
+});
+
+ipcMain.handle('save-settings', async (event, newSettings) => {
+    const saved = saveSettingsToDisk(newSettings);
+    broadcastSettings(saved);
+    return saved;
+});
+
+ipcMain.on('settings-updated', (event, data) => {
+    const saved = data ? saveSettingsToDisk(data) : loadSettingsFromDisk();
+    broadcastSettings(saved);
+});
+
+ipcMain.on('resize-orb-window', (event, { width, height }) => {
+    if (orbWindow && !orbWindow.isDestroyed()) {
+        const [currentW, currentH] = orbWindow.getSize();
+        if (currentW !== width || currentH !== height) {
+            orbWindow.setSize(width, height);
+        }
+    }
 });
 
 ipcMain.on('trigger-action', (event, action) => {
@@ -503,7 +604,7 @@ ipcMain.handle('run-command', async (event, cmd) => {
   });
 });
 
-// Propose commands based on simple keyword matching
+// Propose commands based on simple keyword matching (guaranteed compliant with security filter)
 ipcMain.handle('propose-commands', async (event, userRequest) => {
   const lower = userRequest.toLowerCase();
   const suggestions = [];
@@ -513,18 +614,21 @@ ipcMain.handle('propose-commands', async (event, userRequest) => {
   if (lower.includes('list') && lower.includes('file')) {
     suggestions.push('ls -la');
   }
-  if (lower.includes('show') && lower.includes('directory')) {
+  if (lower.includes('show') && (lower.includes('directory') || lower.includes('folder'))) {
     suggestions.push('pwd');
   }
   if (lower.includes('who am i') || lower.includes('identity')) {
     suggestions.push('whoami');
   }
-  if (lower.includes('delete') && lower.includes('file')) {
-    suggestions.push('rm <filepath>');
+  if (lower.includes('disk') || lower.includes('storage') || lower.includes('space')) {
+    suggestions.push('df -h');
   }
-  // fallback: return all allowed commands
+  if (lower.includes('system') || lower.includes('uname') || lower.includes('os')) {
+    suggestions.push('uname -a');
+  }
+  // fallback: return curated list of allowed safe commands
   if (suggestions.length === 0) {
-    suggestions.push(...['ls -la', 'pwd', 'whoami', 'brew install python', 'rm <filepath>']);
+    suggestions.push(...['ls -la', 'pwd', 'whoami', 'df -h', 'uname -a', 'brew install python']);
   }
   return suggestions;
 });

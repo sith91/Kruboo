@@ -1,16 +1,16 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/status.dart' as status;
 
 class ApiService {
   String _baseUrl = 'http://127.0.0.1:8000';
   String get baseUrl => _baseUrl;
   String? _syncToken;
   final Dio _dio = Dio();
+  static const _backendChannel = MethodChannel('com.kruuboo/backend');
 
   ApiService() {
     _loadSyncData();
@@ -20,6 +20,26 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     _baseUrl = prefs.getString('api_base_url') ?? 'http://127.0.0.1:8000';
     _syncToken = prefs.getString('sync_token');
+
+    if (Platform.isAndroid && _baseUrl.contains('127.0.0.1')) {
+      try {
+        final dynamic port = await _backendChannel.invokeMethod('getBackendPort');
+        if (port != null && port is int && port > 0) {
+          _baseUrl = 'http://127.0.0.1:$port';
+        }
+      } catch (_) {}
+    }
+  }
+
+  Future<void> setPort(int port) async {
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final Uri uri = Uri.parse(_baseUrl);
+      _baseUrl = 'http://${uri.host}:$port';
+    } catch (_) {
+      _baseUrl = 'http://127.0.0.1:$port';
+    }
+    await prefs.setString('api_base_url', _baseUrl);
   }
 
   Future<void> updateConnection(String ip, int port, String token) async {
@@ -288,6 +308,128 @@ class ApiService {
       debugPrint("Run command error: $e");
     }
     return null;
+  }
+
+  // ── Sync & Device ──────────────────────────────────────────────────────────
+  Future<Map<String, dynamic>?> getSyncStatus() async {
+    try {
+      final res = await _dio.get("$_baseUrl/sync/status", options: _getOptions());
+      return res.data;
+    } catch (e) {
+      debugPrint("Get sync status error: $e");
+      return null;
+    }
+  }
+
+  // ── LiteRT / Local Model ───────────────────────────────────────────────────
+  Future<Map<String, dynamic>?> getLiteRTStatus() async {
+    try {
+      final res = await _dio.get("$_baseUrl/litert/status", options: _getOptions());
+      return res.data;
+    } catch (e) {
+      debugPrint("Get LiteRT status error: $e");
+      return null;
+    }
+  }
+
+  Future<bool> downloadLiteRTModel() async {
+    try {
+      final res = await _dio.post("$_baseUrl/litert/download", options: _getOptions());
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint("Download LiteRT error: $e");
+      return false;
+    }
+  }
+
+  // ── Google Workspace Connectors ────────────────────────────────────────────
+  Future<Map<String, dynamic>?> authGmail() async {
+    try {
+      final res = await _dio.get("$_baseUrl/auth/gmail", options: _getOptions());
+      return res.data;
+    } catch (e) {
+      debugPrint("Auth Gmail error: $e");
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> authCalendar() async {
+    try {
+      final res = await _dio.get("$_baseUrl/auth/calendar", options: _getOptions());
+      return res.data;
+    } catch (e) {
+      debugPrint("Auth Calendar error: $e");
+      return null;
+    }
+  }
+
+  // ── Smart Home (IoT) ───────────────────────────────────────────────────────
+  Future<List<dynamic>> getIoTConnectors() async {
+    try {
+      final res = await _dio.get("$_baseUrl/iot/connectors", options: _getOptions());
+      return res.data['connectors'] ?? [];
+    } catch (e) {
+      debugPrint("Get IoT connectors error: $e");
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>> getIoTActive() async {
+    try {
+      final res = await _dio.get("$_baseUrl/iot/active", options: _getOptions());
+      return res.data['active_connectors'] ?? {};
+    } catch (e) {
+      debugPrint("Get IoT active error: $e");
+      return {};
+    }
+  }
+
+  Future<bool> activateIoTConnector(String vendorId, Map<String, dynamic> config) async {
+    try {
+      final res = await _dio.post(
+        "$_baseUrl/iot/activate",
+        data: {"vendor_id": vendorId, "config_data": config},
+        options: _getOptions(),
+      );
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint("Activate IoT connector error: $e");
+      return false;
+    }
+  }
+
+  // ── VRM 3D Model ───────────────────────────────────────────────────────────
+  Future<Map<String, dynamic>?> getVRMInfo() async {
+    try {
+      final res = await _dio.get("$_baseUrl/vrm_info", options: _getOptions());
+      return res.data;
+    } catch (e) {
+      debugPrint("Get VRM info error: $e");
+      return null;
+    }
+  }
+
+  Future<bool> uploadVRM(File file) async {
+    try {
+      FormData formData = FormData.fromMap({
+        "file": await MultipartFile.fromFile(file.path, filename: "custom_avatar.vrm"),
+      });
+      final res = await _dio.post("$_baseUrl/upload_vrm", data: formData, options: _getOptions());
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint("Upload VRM error: $e");
+      return false;
+    }
+  }
+
+  Future<bool> deleteVRM() async {
+    try {
+      final res = await _dio.delete("$_baseUrl/avatar_vrm", options: _getOptions());
+      return res.statusCode == 200;
+    } catch (e) {
+      debugPrint("Delete VRM error: $e");
+      return false;
+    }
   }
 }
 

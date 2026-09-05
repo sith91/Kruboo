@@ -2,9 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://*.googleapis.com; img-src 'self' http://127.0.0.1:* data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:* https://*.googleapis.com data: blob:; img-src 'self' http://127.0.0.1:* data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "./node_modules/three/build/three.module.js",
+            "three/addons/": "./node_modules/three/examples/jsm/",
+            "@pixiv/three-vrm": "./node_modules/@pixiv/three-vrm/lib/three-vrm.module.js"
+        }
+    }
+    </script>
     <style>
         * { box-sizing: border-box; }
 
@@ -22,7 +31,7 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* ── Orb ── */
+        /* ── Orb Wrapper ── */
         .orb-wrapper {
             position: relative;
             width: 130px; height: 130px;
@@ -48,6 +57,64 @@
             animation: siri-swirl 8s infinite ease-in-out;
             z-index: 10;
             -webkit-app-region: no-drag;
+            overflow: hidden;
+        }
+
+        /* VRM 3D Avatar Mode */
+        .orb-wrapper.vrm-full-mode {
+            width: 220px !important;
+            height: 310px !important;
+        }
+        .main-orb.vrm-mode {
+            width: 90px !important;
+            height: 90px !important;
+            background: radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.95)) !important;
+            box-shadow:
+                0 0 0 1px rgba(255,255,255,0.25) inset,
+                0 0 35px rgba(0, 242, 254, 0.5),
+                0 0 60px rgba(124, 58, 237, 0.35),
+                0 14px 36px rgba(0,0,0,0.55) !important;
+            border: 1.5px solid rgba(255,255,255,0.3) !important;
+            animation: none !important;
+        }
+        .main-orb.vrm-mode.full-body {
+            width: 210px !important;
+            height: 290px !important;
+            border-radius: 16px !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+        }
+        .main-orb.vrm-mode::before {
+            display: none !important;
+        }
+        .listening .main-orb.vrm-mode {
+            box-shadow:
+                0 0 0 1.5px rgba(255,255,255,0.4) inset,
+                0 0 45px rgba(0, 242, 254, 0.9),
+                0 0 75px rgba(255, 0, 127, 0.6),
+                0 18px 44px rgba(0,0,0,0.65) !important;
+            animation: none !important;
+            transform: scale(1.08) !important;
+        }
+        .listening .main-orb.vrm-mode.full-body {
+            box-shadow: none !important;
+            filter: drop-shadow(0 0 25px rgba(0, 242, 254, 0.85)) drop-shadow(0 0 45px rgba(124, 58, 237, 0.55)) !important;
+            transform: scale(1.03) !important;
+        }
+
+        #vrm-canvas {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0; left: 0;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 12;
+            display: none;
+        }
+        #vrm-canvas.full-body {
+            border-radius: 16px !important;
         }
 
         @keyframes siri-swirl {
@@ -94,6 +161,7 @@
             background: radial-gradient(ellipse, rgba(255,255,255,0.5) 0%, transparent 75%);
             border-radius: 50%;
             pointer-events: none;
+            z-index: 15;
         }
 
         .main-orb:hover {
@@ -138,13 +206,14 @@
             align-items: center;
             justify-content: center;
             pointer-events: none;
+            z-index: 20;
         }
         .listening .waveform { display: flex; }
 
         .bar {
             width: 2px;
             border-radius: 2px;
-            background: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.7);
             animation: wave-bounce 1s infinite ease-in-out;
         }
         .bar:nth-child(1) { height: 8px;  animation-delay: 0s;    }
@@ -165,17 +234,22 @@
             font-size: 9.5px;
             font-weight: 500;
             letter-spacing: 2px;
-            color: rgba(255, 255, 255, 0.55);
-            background: rgba(255, 255, 255, 0.06);
+            color: rgba(255, 255, 255, 0.75);
+            background: rgba(28, 28, 30, 0.55);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             padding: 5px 14px;
             border-radius: 30px;
-            border: 0.5px solid rgba(255, 255, 255, 0.1);
+            border: 0.5px solid rgba(255, 255, 255, 0.15);
+            max-width: 220px;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        /* ── Listening State ── */
-        .listening .main-orb {
+        /* ── Listening State (Orb) ── */
+        .listening .main-orb:not(.vrm-mode) {
             animation: siri-listen-swirl 1.2s infinite ease-in-out;
         }
         @keyframes siri-listen-swirl {
@@ -211,10 +285,10 @@
         /* ── Context Menu (macOS popover) ── */
         .context-menu {
             position: absolute;
-            background: rgba(28, 28, 30, 0.78);
+            background: rgba(28, 28, 30, 0.85);
             backdrop-filter: saturate(180%) blur(36px);
             -webkit-backdrop-filter: saturate(180%) blur(36px);
-            border: 0.5px solid rgba(255, 255, 255, 0.14);
+            border: 0.5px solid rgba(255, 255, 255, 0.18);
             border-radius: 16px;
             padding: 8px;
             display: none;
@@ -250,7 +324,6 @@
         }
         .menu-item:hover  { background: rgba(255, 255, 255, 0.08); }
         .menu-item:active { background: rgba(255, 255, 255, 0.04); transform: scale(0.94); }
-
         .menu-item + .menu-item { border-left: 0.5px solid rgba(255, 255, 255, 0.07); }
 
         .menu-icon {
@@ -267,13 +340,13 @@
         /* ── Suggestion Card ── */
         .suggestion-card {
             margin-top: 4px;
-            background: rgba(28, 28, 30, 0.72);
+            background: rgba(28, 28, 30, 0.8);
             backdrop-filter: saturate(180%) blur(28px);
             -webkit-backdrop-filter: saturate(180%) blur(28px);
-            border: 0.5px solid rgba(255, 255, 255, 0.12);
+            border: 0.5px solid rgba(255, 255, 255, 0.14);
             border-radius: 14px;
             padding: 10px 12px;
-            color: rgba(255, 255, 255, 0.82);
+            color: rgba(255, 255, 255, 0.85);
             font-size: 11.5px;
             display: none;
             flex-direction: column;
@@ -288,7 +361,7 @@
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.9px;
-            color: rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.4);
         }
         .suggestion-card a {
             color: #0A84FF;
@@ -297,14 +370,14 @@
             font-weight: 400;
             padding: 5px 8px;
             border-radius: 8px;
-            background: rgba(10, 132, 255, 0.08);
+            background: rgba(10, 132, 255, 0.1);
             transition: background 0.1s, transform 0.1s;
             display: flex;
             align-items: center;
             gap: 5px;
         }
         .suggestion-card a::before { content: '↗'; font-size: 9px; opacity: 0.5; }
-        .suggestion-card a:hover  { background: rgba(10, 132, 255, 0.14); }
+        .suggestion-card a:hover  { background: rgba(10, 132, 255, 0.18); }
         .suggestion-card a:active { transform: scale(0.97); }
     </style>
 </head>
@@ -312,7 +385,8 @@
     <div id="orb-container" class="orb-wrapper">
         <div class="aura"></div><div class="aura"></div><div class="aura"></div>
         <div class="main-orb" id="orb-button">
-            <img id="pet-avatar" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%; display: none; pointer-events: none;">
+            <canvas id="vrm-canvas"></canvas>
+            <img id="pet-avatar" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%; display: none; pointer-events: none; z-index: 11;">
         </div>
         <div class="waveform" id="waveform">
             <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
@@ -342,7 +416,11 @@
     <div class="orb-status" id="orb-status">KRUUBOO</div>
     <div class="suggestion-card" id="suggestion-card"></div>
     
-    <script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
         const orbBtn = document.getElementById('orb-button');
         const statusText = document.getElementById('orb-status');
         const container = document.getElementById('orb-container');
@@ -350,15 +428,589 @@
         const menuChat = document.getElementById('menu-chat');
         const menuSettings = document.getElementById('menu-settings');
         const menuHide = document.getElementById('menu-hide');
-        
-        let isListening = false;
-        
         const petAvatar = document.getElementById('pet-avatar');
+        const vrmCanvas = document.getElementById('vrm-canvas');
 
+        let isListening = false;
+        let isAgentSpeaking = false;
+        let activeAudio = null;
         let currentOrbState = 'idle';
+        let uiStrings = {};
+
+        // ══════════════════════════════════════════════════════════════════════
+        // 3D VRM Model Rendering Engine
+        // ══════════════════════════════════════════════════════════════════════
+        let vrmScene, vrmCamera, vrmRenderer, currentVrm, vrmClock;
+        let isVRMInitialized = false;
+        let mouseTarget = { x: 0, y: 0 };
+        let headBone = null, neckBone = null, spineBone = null;
+        let leftUpperArm = null, rightUpperArm = null;
+        let leftLowerArm = null, rightLowerArm = null;
+        let leftHand = null, rightHand = null;
+        let blinkTimer = 0, nextBlinkInterval = 3.0, isBlinking = false, blinkProgress = 0;
+        let lipSyncTimer = 0;
+        let currentLoadedVrmUrl = null;
+
+        function initVRMScene() {
+            if (isVRMInitialized) return;
+            if (!vrmCanvas) return;
+
+            vrmScene = new THREE.Scene();
+
+            vrmCamera = new THREE.PerspectiveCamera(30.0, 1.0, 0.1, 20.0);
+            vrmCamera.position.set(0.0, 1.4, 0.68);
+
+            // Atmospheric & directional lights for anime/MToon shading
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.35);
+            vrmScene.add(ambientLight);
+
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+            keyLight.position.set(1.0, 1.8, 1.2).normalize();
+            vrmScene.add(keyLight);
+
+            const fillLight = new THREE.DirectionalLight(0x70c0ff, 0.9);
+            fillLight.position.set(-1.2, 0.8, 1.0).normalize();
+            vrmScene.add(fillLight);
+
+            const rimLight = new THREE.DirectionalLight(0xff88ff, 0.75);
+            rimLight.position.set(0.0, 1.8, -1.5).normalize();
+            vrmScene.add(rimLight);
+
+            vrmRenderer = new THREE.WebGLRenderer({
+                canvas: vrmCanvas,
+                alpha: true,
+                antialias: true,
+                powerPreference: 'high-performance'
+            });
+            vrmRenderer.setSize(140, 140, false);
+            vrmRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            vrmRenderer.outputColorSpace = THREE.SRGBColorSpace;
+
+            vrmClock = new THREE.Clock();
+            isVRMInitialized = true;
+
+            window.addEventListener('mousemove', (e) => {
+                const rect = vrmCanvas.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                mouseTarget.x = Math.max(-1, Math.min(1, (e.clientX - centerX) / (window.innerWidth / 2)));
+                mouseTarget.y = Math.max(-1, Math.min(1, (e.clientY - centerY) / (window.innerHeight / 2)));
+            });
+
+            loadVRMModel();
+            animateVRM();
+        }
+
+        async function loadVRMModel(forceReload = false) {
+            if (!isVRMInitialized) return;
+
+            let modelUrl = './assets/models/default_avatar.vrm';
+            try {
+                const checkRes = await fetch(`${window.aiBackend.baseUrl}/vrm_info?t=${Date.now()}`);
+                if (checkRes.ok) {
+                    const info = await checkRes.json();
+                    if (info.has_custom) {
+                        modelUrl = `${window.aiBackend.baseUrl}/avatar_vrm?t=${Date.now()}`;
+                    }
+                }
+            } catch(e) {
+                console.warn("Could not check /vrm_info:", e);
+            }
+
+            if (currentVrm && currentLoadedVrmUrl === modelUrl && !forceReload) {
+                return;
+            }
+
+            const loader = new GLTFLoader();
+            loader.register((parser) => new VRMLoaderPlugin(parser));
+
+            loader.load(
+                modelUrl,
+                (gltf) => {
+                    if (currentVrm) {
+                        vrmScene.remove(currentVrm.scene);
+                        VRMUtils.deepDispose(currentVrm.scene);
+                        currentVrm = null;
+                    }
+
+                    const vrm = gltf.userData.vrm;
+                    if (!vrm) {
+                        console.error("No VRM instance found in loaded GLTF");
+                        return;
+                    }
+
+                    VRMUtils.rotateVRM0(vrm);
+                    vrmScene.add(vrm.scene);
+                    currentVrm = vrm;
+                    currentLoadedVrmUrl = modelUrl;
+
+                    headBone = vrm.humanoid?.getNormalizedBoneNode('head');
+                    neckBone = vrm.humanoid?.getNormalizedBoneNode('neck');
+                    spineBone = vrm.humanoid?.getNormalizedBoneNode('spine');
+                    leftUpperArm = vrm.humanoid?.getNormalizedBoneNode('leftUpperArm');
+                    rightUpperArm = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+                    leftLowerArm = vrm.humanoid?.getNormalizedBoneNode('leftLowerArm');
+                    rightLowerArm = vrm.humanoid?.getNormalizedBoneNode('rightLowerArm');
+                    leftHand = vrm.humanoid?.getNormalizedBoneNode('leftHand');
+                    rightHand = vrm.humanoid?.getNormalizedBoneNode('rightHand');
+
+                    const settings = getAppSettings();
+                    applyOrbVRMFraming(settings.vrmDisplayMode || 'orb');
+
+                    console.log("3D VRM Avatar loaded and framed:", modelUrl);
+                },
+                undefined,
+                (error) => {
+                    console.error("VRM Load Error:", error);
+                    if (modelUrl !== './assets/models/default_avatar.vrm') {
+                        loader.load('./assets/models/default_avatar.vrm', (gltf) => {
+                            if (gltf.userData.vrm) {
+                                const vrm = gltf.userData.vrm;
+                                VRMUtils.rotateVRM0(vrm);
+                                vrmScene.add(vrm.scene);
+                                currentVrm = vrm;
+                            }
+                        });
+                    }
+                }
+            );
+        }
+
+        function animateVRM() {
+            requestAnimationFrame(animateVRM);
+            if (!vrmRenderer || !vrmScene || !vrmCamera) return;
+
+            const delta = vrmClock.getDelta();
+            const elapsedTime = vrmClock.getElapsedTime();
+
+            const settings = getAppSettings();
+            const avatarMode = settings.avatarMode || 'globe';
+
+            if (avatarMode !== 'vrm') {
+                return;
+            }
+
+            if (currentVrm) {
+                // 1. Natural Breathing Idle Motion
+                const settings = getAppSettings();
+                const feeling = settings.feeling || 'professional';
+
+                // 1. Natural Breathing Idle Motion & Spine Attitude
+                const breathSpeed = (feeling === 'energetic' || isAgentSpeaking) ? 3.0 : (feeling === 'lethargic') ? 1.4 : 2.2;
+                const breathAmp = (feeling === 'energetic') ? 0.025 : (feeling === 'lethargic') ? 0.008 : 0.015;
+                const breath = Math.sin(elapsedTime * breathSpeed) * breathAmp;
+                
+                let targetSpineX = breath;
+                let targetSpineY = 0;
+                let targetSpineZ = 0;
+
+                // Base Natural Resting Posture
+                const armSway = Math.sin(elapsedTime * 1.8) * 0.025;
+                let targetLeftUpperArmZ = -1.22 + armSway;
+                let targetLeftUpperArmX = 0.14 + (breath * 0.5);
+                let targetLeftUpperArmY = 0.08;
+
+                let targetRightUpperArmZ = 1.22 - armSway;
+                let targetRightUpperArmX = 0.14 + (breath * 0.5);
+                let targetRightUpperArmY = -0.08;
+
+                let targetLeftLowerArmZ = -0.12;
+                let targetLeftLowerArmY = 0.22;
+                let targetLeftLowerArmX = -0.25;
+
+                let targetRightLowerArmZ = 0.12;
+                let targetRightLowerArmY = -0.22;
+                let targetRightLowerArmX = -0.25;
+
+                let targetLeftHandZ = -0.05;
+                let targetLeftHandX = 0;
+                let targetLeftHandY = 0;
+
+                let targetRightHandZ = 0.05;
+                let targetRightHandX = 0;
+                let targetRightHandY = 0;
+
+                // ── State-Based Arm & Body Mimicking ──
+                if (currentOrbState === 'listening') {
+                    // Attentive Listening Pose: Lean forward, open receptive arms & hands
+                    targetSpineX = -0.04 + (breath * 0.6);
+                    targetLeftUpperArmZ = -1.02;
+                    targetLeftUpperArmX = 0.32 + Math.sin(elapsedTime * 2.2) * 0.02;
+                    targetLeftUpperArmY = 0.18;
+                    targetLeftLowerArmX = -0.58;
+                    targetLeftLowerArmY = 0.38;
+                    targetLeftHandX = 0.18;
+
+                    targetRightUpperArmZ = 1.02;
+                    targetRightUpperArmX = 0.32 + Math.sin(elapsedTime * 2.2) * 0.02;
+                    targetRightUpperArmY = -0.18;
+                    targetRightLowerArmX = -0.58;
+                    targetRightLowerArmY = -0.38;
+                    targetRightHandX = 0.18;
+                } else if (currentOrbState === 'thinking') {
+                    // Contemplative Thinking Pose: Hand near chin, thoughtful posture
+                    targetSpineX = 0.02;
+                    targetSpineY = 0.03;
+                    targetRightUpperArmZ = 0.55;
+                    targetRightUpperArmX = 0.65;
+                    targetRightUpperArmY = -0.25;
+                    targetRightLowerArmX = -1.45 + Math.sin(elapsedTime * 1.8) * 0.03;
+                    targetRightLowerArmY = -0.55;
+                    targetRightLowerArmZ = 0.3;
+                    targetRightHandX = 0.35;
+                    targetRightHandY = -0.2;
+
+                    targetLeftUpperArmZ = -0.85;
+                    targetLeftUpperArmX = 0.42;
+                    targetLeftUpperArmY = 0.25;
+                    targetLeftLowerArmX = -0.95;
+                    targetLeftLowerArmY = 0.6;
+                    targetLeftLowerArmZ = -0.2;
+                } else if (isAgentSpeaking || currentOrbState === 'speaking') {
+                    // Dynamic Conversational Gestures Synced to Speech Cadence
+                    const g1 = Math.sin(elapsedTime * 3.6) * 0.22;
+                    const g2 = Math.cos(elapsedTime * 2.8) * 0.18;
+                    const gHand = Math.sin(elapsedTime * 4.0) * 0.25;
+
+                    targetSpineX = breath + (g1 * 0.05);
+                    targetLeftUpperArmZ = -1.05 + (g1 * 0.45);
+                    targetLeftUpperArmX = 0.35 + g2;
+                    targetLeftUpperArmY = 0.16;
+                    targetLeftLowerArmX = -0.65 - (Math.abs(g1) * 0.55);
+                    targetLeftLowerArmY = 0.35 + (g2 * 0.35);
+                    targetLeftHandX = gHand;
+                    targetLeftHandY = g1 * 0.4;
+
+                    targetRightUpperArmZ = 1.05 - (g2 * 0.45);
+                    targetRightUpperArmX = 0.35 + g1;
+                    targetRightUpperArmY = -0.16;
+                    targetRightLowerArmX = -0.65 - (Math.abs(g2) * 0.55);
+                    targetRightLowerArmY = -0.35 - (g1 * 0.35);
+                    targetRightHandX = -gHand;
+                    targetRightHandY = -g2 * 0.4;
+                }
+
+                // ── Persona & Feeling Modifiers ──
+                if (feeling === 'energetic') {
+                    const energyBounce = Math.sin(elapsedTime * 4.0) * 0.03;
+                    targetSpineX += energyBounce;
+                    targetLeftUpperArmZ += 0.12;
+                    targetRightUpperArmZ -= 0.12;
+                } else if (feeling === 'romantic') {
+                    const swaySoft = Math.sin(elapsedTime * 1.5) * 0.03;
+                    targetSpineZ = swaySoft * 0.5;
+                    targetLeftUpperArmZ += 0.08;
+                    targetRightUpperArmZ -= 0.08;
+                    targetLeftLowerArmX -= 0.15;
+                    targetRightLowerArmX -= 0.15;
+                } else if (feeling === 'sarcastic' || feeling === 'arrogant') {
+                    targetSpineY = 0.04;
+                    targetRightUpperArmZ = 0.85;
+                    targetRightLowerArmX = -0.95;
+                    targetRightLowerArmY = -0.65;
+                } else if (feeling === 'lethargic') {
+                    targetSpineX = 0.08 + (breath * 0.5); // slouched
+                    targetLeftUpperArmZ = -1.35;
+                    targetRightUpperArmZ = 1.35;
+                    targetLeftLowerArmX = -0.05;
+                    targetRightLowerArmX = -0.05;
+                }
+
+                // Smoothly Interpolate (Lerp) Bone Transforms for Butter-Smooth Transitions
+                const lerpArm = 0.085;
+                if (spineBone) {
+                    spineBone.rotation.x = THREE.MathUtils.lerp(spineBone.rotation.x, targetSpineX, lerpArm);
+                    spineBone.rotation.y = THREE.MathUtils.lerp(spineBone.rotation.y, targetSpineY, lerpArm);
+                    spineBone.rotation.z = THREE.MathUtils.lerp(spineBone.rotation.z, targetSpineZ, lerpArm);
+                }
+                if (leftUpperArm) {
+                    leftUpperArm.rotation.z = THREE.MathUtils.lerp(leftUpperArm.rotation.z, targetLeftUpperArmZ, lerpArm);
+                    leftUpperArm.rotation.x = THREE.MathUtils.lerp(leftUpperArm.rotation.x, targetLeftUpperArmX, lerpArm);
+                    leftUpperArm.rotation.y = THREE.MathUtils.lerp(leftUpperArm.rotation.y, targetLeftUpperArmY, lerpArm);
+                }
+                if (rightUpperArm) {
+                    rightUpperArm.rotation.z = THREE.MathUtils.lerp(rightUpperArm.rotation.z, targetRightUpperArmZ, lerpArm);
+                    rightUpperArm.rotation.x = THREE.MathUtils.lerp(rightUpperArm.rotation.x, targetRightUpperArmX, lerpArm);
+                    rightUpperArm.rotation.y = THREE.MathUtils.lerp(rightUpperArm.rotation.y, targetRightUpperArmY, lerpArm);
+                }
+                if (leftLowerArm) {
+                    leftLowerArm.rotation.z = THREE.MathUtils.lerp(leftLowerArm.rotation.z, targetLeftLowerArmZ, lerpArm);
+                    leftLowerArm.rotation.x = THREE.MathUtils.lerp(leftLowerArm.rotation.x, targetLeftLowerArmX, lerpArm);
+                    leftLowerArm.rotation.y = THREE.MathUtils.lerp(leftLowerArm.rotation.y, targetLeftLowerArmY, lerpArm);
+                }
+                if (rightLowerArm) {
+                    rightLowerArm.rotation.z = THREE.MathUtils.lerp(rightLowerArm.rotation.z, targetRightLowerArmZ, lerpArm);
+                    rightLowerArm.rotation.x = THREE.MathUtils.lerp(rightLowerArm.rotation.x, targetRightLowerArmX, lerpArm);
+                    rightLowerArm.rotation.y = THREE.MathUtils.lerp(rightLowerArm.rotation.y, targetRightLowerArmY, lerpArm);
+                }
+                if (leftHand) {
+                    leftHand.rotation.z = THREE.MathUtils.lerp(leftHand.rotation.z, targetLeftHandZ, lerpArm);
+                    leftHand.rotation.x = THREE.MathUtils.lerp(leftHand.rotation.x, targetLeftHandX, lerpArm);
+                    leftHand.rotation.y = THREE.MathUtils.lerp(leftHand.rotation.y, targetLeftHandY, lerpArm);
+                }
+                if (rightHand) {
+                    rightHand.rotation.z = THREE.MathUtils.lerp(rightHand.rotation.z, targetRightHandZ, lerpArm);
+                    rightHand.rotation.x = THREE.MathUtils.lerp(rightHand.rotation.x, targetRightHandX, lerpArm);
+                    rightHand.rotation.y = THREE.MathUtils.lerp(rightHand.rotation.y, targetRightHandY, lerpArm);
+                }
+
+                // 2. Cursor Gaze & Head Tracking with smooth lerp
+                if (headBone) {
+                    const targetRotY = THREE.MathUtils.lerp(headBone.rotation.y, mouseTarget.x * 0.25, 0.08);
+                    const targetRotX = THREE.MathUtils.lerp(headBone.rotation.x, -mouseTarget.y * 0.18 + breath * 0.5, 0.08);
+                    headBone.rotation.y = targetRotY;
+                    headBone.rotation.x = targetRotX;
+                }
+
+                // 3. Eye Blinking Cycle
+                blinkTimer += delta;
+                if (!isBlinking && blinkTimer >= nextBlinkInterval) {
+                    isBlinking = true;
+                    blinkTimer = 0;
+                    blinkProgress = 0;
+                    nextBlinkInterval = 2.5 + Math.random() * 3.0;
+                }
+
+                if (isBlinking) {
+                    blinkProgress += delta * 12.0;
+                    let blinkWeight = 0;
+                    if (blinkProgress < 1.0) {
+                        blinkWeight = Math.sin(blinkProgress * Math.PI);
+                    } else {
+                        isBlinking = false;
+                        blinkWeight = 0;
+                    }
+                    if (currentVrm.expressionManager) {
+                        currentVrm.expressionManager.setValue('blink', blinkWeight);
+                    }
+                }
+
+                // 4. Emotional Expression States
+                if (currentVrm.expressionManager) {
+                    if (currentOrbState === 'listening') {
+                        currentVrm.expressionManager.setValue('happy', 0.35);
+                        currentVrm.expressionManager.setValue('surprised', 0.25);
+                        currentVrm.expressionManager.setValue('neutral', 0.4);
+                    } else if (currentOrbState === 'thinking') {
+                        currentVrm.expressionManager.setValue('happy', 0.0);
+                        currentVrm.expressionManager.setValue('surprised', 0.0);
+                        currentVrm.expressionManager.setValue('neutral', 0.85);
+                    } else if (isAgentSpeaking || currentOrbState === 'speaking') {
+                        currentVrm.expressionManager.setValue('happy', 0.45);
+                        currentVrm.expressionManager.setValue('surprised', 0.0);
+                        currentVrm.expressionManager.setValue('neutral', 0.3);
+                    } else {
+                        // Idle
+                        currentVrm.expressionManager.setValue('happy', 0.15);
+                        currentVrm.expressionManager.setValue('surprised', 0.0);
+                        currentVrm.expressionManager.setValue('neutral', 0.7);
+                    }
+
+                    // 5. Lip Sync / Mouth Visemes during speech
+                    if (isAgentSpeaking || currentOrbState === 'speaking') {
+                        lipSyncTimer += delta * 14.0;
+                        const mouthOpen = (Math.sin(lipSyncTimer) + 1.0) * 0.5;
+                        const visemeIndex = Math.floor(elapsedTime * 4.0) % 4;
+                        const visemes = ['aa', 'oh', 'ih', 'ee'];
+                        
+                        visemes.forEach((v, idx) => {
+                            const weight = (idx === visemeIndex) ? mouthOpen * 0.75 : 0;
+                            currentVrm.expressionManager.setValue(v, weight);
+                        });
+                    } else {
+                        ['aa', 'ih', 'ou', 'ee', 'oh'].forEach(v => {
+                            currentVrm.expressionManager.setValue(v, 0);
+                        });
+                    }
+
+                    currentVrm.expressionManager.update();
+                }
+
+                currentVrm.update(delta);
+            }
+
+            vrmRenderer.render(vrmScene, vrmCamera);
+        }
+
+        function applyOrbVRMFraming(displayMode = 'orb') {
+            if (!currentVrm || !vrmCamera) return;
+            const settings = getAppSettings();
+            const scale = settings.avatarScale || 1.0;
+            const box = new THREE.Box3().setFromObject(currentVrm.scene);
+            const size = new THREE.Vector3();
+            box.getSize(size);
+            const center = new THREE.Vector3();
+            box.getCenter(center);
+            const headBone = currentVrm.humanoid?.getNormalizedBoneNode('head');
+
+            if (displayMode === 'full') {
+                const targetH = Math.round(Math.max(260, Math.min(680, 340 * (size.y || 1.4) * scale)));
+                const targetW = Math.round(Math.max(180, Math.min(500, targetH * 0.72)));
+                
+                container.style.width = targetW + 'px';
+                container.style.height = targetH + 'px';
+                orbBtn.style.width = (targetW - 10) + 'px';
+                orbBtn.style.height = (targetH - 10) + 'px';
+
+                if (window.aiBackend && window.aiBackend.resizeOrbWindow) {
+                    window.aiBackend.resizeOrbWindow(targetW + 20, targetH + 34);
+                }
+
+                const fov = vrmCamera.fov * (Math.PI / 180);
+                const camDist = Math.max(1.0, (size.y * 0.58) / Math.tan(fov / 2));
+                vrmCamera.position.set(center.x, center.y + (size.y * 0.04), center.z + camDist);
+                vrmCamera.lookAt(center.x, center.y + (size.y * 0.04), center.z);
+                vrmCamera.aspect = targetW / targetH;
+                vrmCamera.updateProjectionMatrix();
+                if (vrmRenderer) vrmRenderer.setSize(targetW, targetH, false);
+            } else {
+                const orbPx = Math.round(90 * scale);
+                container.style.width = (orbPx + 40) + 'px';
+                container.style.height = (orbPx + 40) + 'px';
+                orbBtn.style.width = orbPx + 'px';
+                orbBtn.style.height = orbPx + 'px';
+
+                const winW = Math.round(Math.max(200, orbPx + 140));
+                const winH = Math.round(Math.max(220, orbPx + 160));
+                if (window.aiBackend && window.aiBackend.resizeOrbWindow) {
+                    window.aiBackend.resizeOrbWindow(winW, winH);
+                }
+
+                if (headBone) {
+                    const headPos = new THREE.Vector3();
+                    headBone.getWorldPosition(headPos);
+                    const camDist = Math.max(0.46, Math.min(1.0, size.y * 0.44));
+                    vrmCamera.position.set(headPos.x, headPos.y - 0.03, headPos.z + camDist);
+                    vrmCamera.lookAt(headPos.x, headPos.y - 0.03, headPos.z);
+                } else {
+                    const targetY = center.y + (size.y * 0.2);
+                    const camDist = Math.max(0.5, size.y * 0.85);
+                    vrmCamera.position.set(center.x, targetY, center.z + camDist);
+                    vrmCamera.lookAt(center.x, targetY, center.z);
+                }
+                vrmCamera.aspect = 1.0;
+                vrmCamera.updateProjectionMatrix();
+                if (vrmRenderer) vrmRenderer.setSize(orbPx + 40, orbPx + 40, false);
+            }
+        }
+
+        function getAppSettings() {
+            if (window.aiBackend && window.aiBackend.getSettingsSync) {
+                return window.aiBackend.getSettingsSync();
+            }
+            return JSON.parse(localStorage.getItem('nexus-settings')) || {};
+        }
+
+        function updateVisualMode(customSettings = null) {
+            const settings = customSettings || getAppSettings();
+            const mode = settings.avatarMode || 'globe';
+            const vrmDisplayMode = settings.vrmDisplayMode || 'orb';
+            const scale = settings.avatarScale || 1.0;
+            console.log("[Orb] updateVisualMode:", mode, "vrmDisplayMode:", vrmDisplayMode, "scale:", scale);
+
+            if (mode === 'vrm') {
+                if (vrmCanvas) vrmCanvas.style.display = 'block';
+                if (petAvatar) petAvatar.style.display = 'none';
+                if (orbBtn) {
+                    orbBtn.classList.add('vrm-mode');
+                    if (vrmDisplayMode === 'full') {
+                        orbBtn.classList.add('full-body');
+                        container.classList.add('vrm-full-mode');
+                        if (vrmCanvas) vrmCanvas.classList.add('full-body');
+                    } else {
+                        orbBtn.classList.remove('full-body');
+                        container.classList.remove('vrm-full-mode');
+                        if (vrmCanvas) vrmCanvas.classList.remove('full-body');
+                    }
+                }
+                if (!isVRMInitialized) {
+                    initVRMScene();
+                } else {
+                    applyOrbVRMFraming(vrmDisplayMode);
+                    loadVRMModel();
+                }
+            } else {
+                // Globe mode (default)
+                if (vrmCanvas) {
+                    vrmCanvas.style.display = 'none';
+                    vrmCanvas.classList.remove('full-body');
+                }
+                if (orbBtn) {
+                    orbBtn.classList.remove('vrm-mode', 'full-body');
+                    const orbPx = Math.round(70 * scale);
+                    orbBtn.style.width = orbPx + 'px';
+                    orbBtn.style.height = orbPx + 'px';
+                    container.style.width = (orbPx + 60) + 'px';
+                    container.style.height = (orbPx + 60) + 'px';
+                }
+                if (container) container.classList.remove('vrm-full-mode');
+                const orbPx = Math.round(70 * scale);
+                const winW = Math.round(Math.max(200, orbPx + 140));
+                const winH = Math.round(Math.max(220, orbPx + 160));
+                if (window.aiBackend && window.aiBackend.resizeOrbWindow) {
+                    window.aiBackend.resizeOrbWindow(winW, winH);
+                }
+                updateOrbVisualState(currentOrbState);
+            }
+        }
+
+        // Mouse Wheel Scroll Zoom / Resize
+        let isMouseOverOrb = false;
+        container.addEventListener('mouseenter', () => { isMouseOverOrb = true; });
+        container.addEventListener('mouseleave', () => { isMouseOverOrb = false; });
+
+        let wheelDebounce = null;
+        window.addEventListener('wheel', (e) => {
+            if (isMouseOverOrb || e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                const settings = getAppSettings();
+                let scale = settings.avatarScale || 1.0;
+                scale += e.deltaY > 0 ? -0.05 : 0.05;
+                scale = Math.max(0.5, Math.min(2.5, Math.round(scale * 100) / 100));
+                const updated = { ...settings, avatarScale: scale };
+                localStorage.setItem('nexus-settings', JSON.stringify(updated));
+                if (window.aiBackend && window.aiBackend.saveSettings) {
+                    window.aiBackend.saveSettings(updated);
+                }
+                if (wheelDebounce) clearTimeout(wheelDebounce);
+                wheelDebounce = setTimeout(() => {
+                    if (window.aiBackend && window.aiBackend.notifySettingsUpdated) {
+                        window.aiBackend.notifySettingsUpdated(updated);
+                    }
+                }, 150);
+                updateVisualMode(updated);
+            }
+        }, { passive: false });
+
+        if (window.aiBackend && window.aiBackend.onWindowResized) {
+            window.aiBackend.onWindowResized(() => {
+                if (vrmRenderer && vrmCanvas && isVRMInitialized) {
+                    const rect = vrmCanvas.getBoundingClientRect();
+                    const w = rect.width || window.innerWidth;
+                    const h = rect.height || window.innerHeight;
+                    vrmRenderer.setSize(w, h, false);
+                    if (vrmCamera) {
+                        vrmCamera.aspect = w / h;
+                        vrmCamera.updateProjectionMatrix();
+                    }
+                }
+            });
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
+        // Visual State & Orb Controller
+        // ══════════════════════════════════════════════════════════════════════
         function updateOrbVisualState(state) {
-            if (!petAvatar) return;
             currentOrbState = state;
+            const settings = getAppSettings();
+            const mode = settings.avatarMode || 'globe';
+
+            if (mode === 'vrm') {
+                if (petAvatar) petAvatar.style.display = 'none';
+                return;
+            }
+
+            if (!petAvatar) return;
             
             const specificUrl = `${window.aiBackend.baseUrl}/pet/${state}?t=${Date.now()}`;
             const fallbackUrl = `${window.aiBackend.baseUrl}/avatar?t=${Date.now()}`;
@@ -382,19 +1034,29 @@
             img.src = specificUrl;
         }
 
-        const originalSetOrbStatus = window.aiBackend.setOrbStatus;
-        window.aiBackend.setOrbStatus = function(status) {
-            if (originalSetOrbStatus) originalSetOrbStatus(status);
+        function setLocalOrbStatus(status) {
+            try {
+                if (window.aiBackend && window.aiBackend.setOrbStatus) {
+                    window.aiBackend.setOrbStatus(status);
+                }
+            } catch(e) {}
             updateOrbVisualState(status);
-        };
+        }
 
-        window.aiBackend.onSettingsUpdated(() => {
+        window.aiBackend.onSettingsUpdated((newSettings) => {
+            console.log("[Orb] onSettingsUpdated triggered with:", newSettings);
+            const settings = newSettings || getAppSettings();
+            updateVisualMode(settings);
             updateOrbVisualState(currentOrbState);
+            if (isVRMInitialized) loadVRMModel(true);
+            wakeWordErrorCount = 0;
+            if (wakeWordRecognizer) { try { wakeWordRecognizer.stop(); } catch(e){} wakeWordRecognizer = null; }
+            startWakeWordDetection();
         });
-        
-        // Initial setup trigger
-        updateOrbVisualState('idle');
-        
+
+        // ══════════════════════════════════════════════════════════════════════
+        // Context Menu & Interaction Listeners
+        // ══════════════════════════════════════════════════════════════════════
         document.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             contextMenu.classList.add('visible');
@@ -431,27 +1093,42 @@
             }
         });
 
+        statusText.addEventListener('click', () => {
+            if (isListening) {
+                stopRecording();
+                if (recognition) recognition.stop();
+            } else {
+                if (isAgentSpeaking) {
+                    stopSpeaking();
+                }
+                startRecording();
+            }
+        });
+        statusText.style.cursor = 'pointer';
+
         orbBtn.addEventListener('dblclick', (e) => {
             e.stopPropagation();
             window.aiBackend.toggleMainWindow();
         });
 
+        // ══════════════════════════════════════════════════════════════════════
+        // Audio, Speech Recognition & Wake Word
+        // ══════════════════════════════════════════════════════════════════════
         let mediaRecorder = null;
         let audioChunks = [];
         let recognition = null;
-        let isAgentSpeaking = false;
-        let activeAudio = null;
-        let uiStrings = {};
+        let currentMediaStream = null;
+        let recordStartTime = 0;
+        let speechDetected = false;
 
         async function loadLocales() {
-            const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+            const settings = getAppSettings();
             const lang = settings.lang || 'en-US';
             try {
                 const response = await fetch(`locales/${lang}.json`);
                 uiStrings = await response.json();
             } catch (err) {
                 console.error("Failed to load locales via fetch, attempting fallback.", err);
-                // Fallback mechanism if Electron file:// fetches fail
                 if (lang === 'si-LK') {
                     uiStrings = {
                         "status_idle": "කතා කිරීමට ඔබන්න", "status_listening": "සවන් දෙමින්...", "status_listening_web": "සවන් දෙමින් (වෙබ්)...", "status_transcribing": "පරිවර්තනය කරමින්...", "status_thinking": "...", "status_researching": "🧬 තොරතුරු සොයමින්...", "status_done": "අවසන්", "status_error": "දෝෂයකි", "status_connection_error": "සම්බන්ධතා දෝෂයකි", "status_no_audio": "ශබ්දයක් නැත", "status_mic_error": "මයික්‍රෆෝන් දෝෂයක්: ", "status_mic_error_short": "මයික්‍රෆෝන් දෝෂයක්", "status_permission_denied": "අවසර ලබා දී නැත", "status_permission_error": "අවසර දෝෂයකි", "status_stt_error": "හඳුනාගැනීමේ දෝෂයක්", "status_could_not_hear": "නැවත උත්සහ කරන්න"
@@ -470,12 +1147,14 @@
         function localize(key) {
             return uiStrings[key] || key;
         }
-        
-        // Try to use Backend STT directly for reliability, unless we need foreign languages
+
         function startRecording() {
-            if (isListening || isAgentSpeaking) return;
+            if (isListening) return;
+            if (isAgentSpeaking) {
+                stopSpeaking();
+            }
             if (wakeWordRecognizer) { try { wakeWordRecognizer.stop(); } catch(e){} wakeWordRecognizer = null; }
-            const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+            const settings = getAppSettings();
             const engine = settings.sttEngine || 'local';
             if (engine === 'browser') {
                 console.log("Using Web STT (Browser Native)");
@@ -494,7 +1173,7 @@
                     startBackendSTT();
                     return;
                 }
-                const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+                const settings = getAppSettings();
                 recognition = new SpeechRecognition();
                 recognition.lang = settings.lang || 'en-US';
                 recognition.continuous = false;
@@ -504,7 +1183,7 @@
                     isListening = true;
                     container.classList.add('listening');
                     statusText.innerText = localize("status_listening_web");
-                    window.aiBackend.setOrbStatus('listening');
+                    setLocalOrbStatus('listening');
                 };
 
                 recognition.onerror = (event) => {
@@ -518,10 +1197,12 @@
                         statusText.innerText = localize("status_permission_denied");
                         isListening = false;
                         container.classList.remove('listening');
+                        setLocalOrbStatus('idle');
                     } else {
                         statusText.innerText = localize("status_mic_error") + event.error.toUpperCase();
                         isListening = false;
                         container.classList.remove('listening');
+                        setLocalOrbStatus('idle');
                     }
                 };
 
@@ -539,6 +1220,7 @@
                     if (isListening && !window.useBackendSTT) {
                         container.classList.remove('listening');
                         isListening = false;
+                        setLocalOrbStatus('idle');
                     }
                 };
                 
@@ -562,27 +1244,22 @@
 
         function startWakeWordDetection() {
             if (wakeWordRecognizer || isListening || isAgentSpeaking) return;
-            const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+            const settings = getAppSettings();
             if (!settings.voiceActivation) {
-                console.log("Wake Word is disabled in settings.");
                 return;
             }
             if (wakeWordErrorCount >= 3) {
-                console.warn("Wake Word detection suspended due to repeated microphone or permission errors.");
+                console.warn("Wake Word detection suspended due to repeated mic errors.");
                 statusText.innerText = "MIC ACCESS ERROR";
                 statusText.style.opacity = "0.7";
                 return;
             }
             
             const assistantName = settings.name || "Kruuboo";
-            console.log("Wake Word detection active for: " + assistantName);
             statusText.innerText = "Listening for '" + assistantName + "'";
             statusText.style.opacity = "0.5";
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) {
-                console.error("SpeechRecognition API not supported in this browser/environment.");
-                return;
-            }
+            if (!SpeechRecognition) return;
             
             wakeWordRecognizer = new SpeechRecognition();
             wakeWordRecognizer.continuous = true;
@@ -594,48 +1271,40 @@
             };
             
             wakeWordRecognizer.onresult = (event) => {
-                wakeWordErrorCount = 0; // Reset on successful input
-                const s = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+                wakeWordErrorCount = 0;
+                const s = getAppSettings();
                 const name = (s.name || "Kruboo").toLowerCase();
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                     const transcript = event.results[i][0].transcript.toLowerCase().trim();
-                    console.log("Passive transcript:", transcript);
-                    
-                    // Trigger if it includes the name
                     if (transcript.includes(name)) {
                         console.log("Wake word '" + name + "' detected!");
                         statusText.innerText = "Waking up...";
-                        statusText.style.opacity = "1";
-                        if (wakeWordRecognizer) {
-                            wakeWordRecognizer.stop();
-                            wakeWordRecognizer = null;
-                        }
-                        setTimeout(startRecording, 100);
-                        return;
+                        try { wakeWordRecognizer.stop(); } catch(e){}
+                        wakeWordRecognizer = null;
+                        startRecording();
+                        break;
                     }
                 }
             };
-            wakeWordRecognizer.onerror = (err) => {
-                console.warn("Wake Word recognizer error:", err.error);
-                if (err.error === 'not-allowed' || err.error === 'service-not-allowed' || err.error === 'audio-capture') {
+            
+            wakeWordRecognizer.onerror = (event) => {
+                console.warn("Wake word listener error:", event.error);
+                if (event.error === 'network' || event.error === 'no-speech') {
+                    // Ignore transient network and no-speech events
+                } else if (event.error === 'not-allowed') {
+                    wakeWordErrorCount = 99;
+                } else {
                     wakeWordErrorCount++;
                 }
             };
+            
             wakeWordRecognizer.onend = () => {
                 wakeWordRecognizer = null;
-                // If it ran for less than 3 seconds before ending, it is flapping/restarting too fast.
-                // Apply a 5-second cooldown delay to prevent the OS mic indicator from blinking.
-                let delay = 500;
-                if (Date.now() - lastWakeWordStartTime < 3000) {
-                    delay = 5000;
+                if (!isListening && !isAgentSpeaking && wakeWordErrorCount < 3) {
+                    setTimeout(() => startWakeWordDetection(), 500);
                 }
-                if (wakeWordErrorCount > 0) {
-                    delay = Math.max(delay, 8000);
-                }
-                setTimeout(() => {
-                    if (!isListening && !isAgentSpeaking) startWakeWordDetection();
-                }, delay);
             };
+            
             try { 
                 lastWakeWordStartTime = Date.now();
                 wakeWordRecognizer.start(); 
@@ -643,6 +1312,7 @@
         }
 
         async function startBackendSTT() {
+            if (isAgentSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking) || activeAudio) return;
             try {
                 if (!audioContext) {
                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -650,52 +1320,59 @@
                 if (audioContext.state === 'suspended') {
                     await audioContext.resume();
                 }
-                navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-                .then(stream => {
-                    isListening = true;
-                    container.classList.add('listening');
-                    statusText.innerText = localize("status_listening");
-                    statusText.style.opacity = "1";
-                    window.aiBackend.setOrbStatus('listening');
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                currentMediaStream = stream;
+                isListening = true;
+                recordStartTime = Date.now();
+                speechDetected = false;
+
+                container.classList.add('listening');
+                statusText.innerText = localize("status_listening");
+                statusText.style.opacity = "1";
+                setLocalOrbStatus('listening');
+                
+                source = audioContext.createMediaStreamSource(stream);
+                
+                const analyser = audioContext.createAnalyser();
+                analyser.minDecibels = -70;
+                analyser.smoothingTimeConstant = 0.1;
+                analyser.fftSize = 512;
+                source.connect(analyser);
+
+                scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                audioBuffer = [];
+                let lastSpeechTime = Date.now();
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                scriptProcessor.onaudioprocess = (event) => {
+                    if (!isListening || isAgentSpeaking || (window.speechSynthesis && window.speechSynthesis.speaking) || activeAudio) return;
+                    const inputData = event.inputBuffer.getChannelData(0);
+                    audioBuffer.push(new Float32Array(inputData));
+
+                    analyser.getByteFrequencyData(dataArray);
+                    const sum = dataArray.reduce((a, b) => a + b, 0);
+                    const avg = sum / dataArray.length;
                     
-                    source = audioContext.createMediaStreamSource(stream);
-                    
-                    // Add VAD for faster, Siri-like cutoffs
-                    const analyser = audioContext.createAnalyser();
-                    analyser.minDecibels = -70; // Silence threshold
-                    analyser.smoothingTimeConstant = 0.1;
-                    analyser.fftSize = 512;
-                    source.connect(analyser);
+                    if (avg > 15) { 
+                        speechDetected = true;
+                        lastSpeechTime = Date.now();
+                    } else if (speechDetected && (Date.now() - lastSpeechTime > 1500) && (Date.now() - recordStartTime > 2500)) { 
+                        stopRecording();
+                    }
+                };
 
-                    scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-                    
-                    audioBuffer = [];
-                    let silenceStart = Date.now();
-                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                source.connect(scriptProcessor);
+                scriptProcessor.connect(audioContext.destination);
 
-                    scriptProcessor.onaudioprocess = (event) => {
-                        if (!isListening) return;
-                        const inputData = event.inputBuffer.getChannelData(0);
-                        audioBuffer.push(new Float32Array(inputData));
-
-                        analyser.getByteFrequencyData(dataArray);
-                        const sum = dataArray.reduce((a, b) => a + b, 0);
-                        if (sum > 600) { 
-                            silenceStart = Date.now(); // Reset silence clock if speaking
-                        } else if (Date.now() - silenceStart > 1200) { 
-                            // Automatically stop after 1.2s of silence
-                            stopRecording();
-                        }
-                    };
-
-                    source.connect(scriptProcessor);
-                    scriptProcessor.connect(audioContext.destination);
-
-                    setTimeout(() => { if (isListening) stopRecording(); }, 15000); // 15s max
-                });
+                setTimeout(() => { if (isListening) stopRecording(); }, 15000);
             } catch (err) {
                 console.error('Could not start Backend STT:', err);
+                isListening = false;
+                container.classList.remove('listening');
+                setLocalOrbStatus('idle');
                 statusText.innerText = localize("status_mic_error_short");
+                setTimeout(() => { statusText.innerText = localize("status_idle"); }, 2000);
             }
         }
 
@@ -703,18 +1380,30 @@
             if (!isListening) return;
             isListening = false;
             container.classList.remove('listening');
-            window.aiBackend.setOrbStatus('idle');
+            setLocalOrbStatus('idle');
 
             if (scriptProcessor) {
-                scriptProcessor.disconnect();
-                source.disconnect();
+                try { scriptProcessor.disconnect(); } catch(e){}
+                scriptProcessor = null;
+            }
+            if (source) {
+                try { source.disconnect(); } catch(e){}
+                source = null;
+            }
+            if (currentMediaStream) {
+                try {
+                    currentMediaStream.getTracks().forEach(track => track.stop());
+                } catch(e){}
+                currentMediaStream = null;
             }
             if (audioContext && audioContext.state === 'running') {
-                audioContext.suspend();
+                try { audioContext.suspend(); } catch(e){}
             }
 
             if (!audioBuffer || audioBuffer.length === 0) {
                 statusText.innerText = localize("status_no_audio");
+                setTimeout(() => { statusText.innerText = localize("status_idle"); }, 1500);
+                startWakeWordDetection();
                 return;
             }
 
@@ -729,9 +1418,9 @@
                     offset += b.length;
                 }
 
-                const wavBlob = encodeWAVFromFloat32(resultBuffer, audioContext.sampleRate);
+                const wavBlob = encodeWAVFromFloat32(resultBuffer, audioContext ? audioContext.sampleRate : 44100);
                 
-                const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+                const settings = getAppSettings();
                 const formData = new FormData();
                 formData.append('file', wavBlob, 'voice.wav');
                 formData.append('language', settings.lang || 'en-US');
@@ -765,8 +1454,8 @@
             writeString(view, 8, 'WAVE');
             writeString(view, 12, 'fmt ');
             view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true); // PCM
-            view.setUint16(22, 1, true); // Mono
+            view.setUint16(20, 1, true);
+            view.setUint16(22, 1, true);
             view.setUint32(24, sampleRate, true);
             view.setUint32(28, sampleRate * 2, true);
             view.setUint16(32, 2, true);
@@ -788,9 +1477,12 @@
             }
         }
 
+        // ══════════════════════════════════════════════════════════════════════
+        // WebSocket Chat Query Handling
+        // ══════════════════════════════════════════════════════════════════════
         let ws;
-        let activeWSHandler = null; // Track active handler to prevent duplicate listeners
-        let pendingQuery = null; // Buffer queries when WS drops mid-run
+        let activeWSHandler = null;
+        let pendingQuery = null;
         function setupWebSocket() {
             const token = "localhost";
             ws = new WebSocket(`${window.aiBackend.wsUrl}/ws/${token}`);
@@ -809,10 +1501,10 @@
 
         async function finishVoiceInteraction(query) {
             statusText.innerText = localize("status_thinking");
-            window.aiBackend.setOrbStatus('thinking');
+            setLocalOrbStatus('thinking');
             
             try {
-                const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+                const settings = getAppSettings();
                 const selectedModel = settings.model || 'llama-3';
                 let provider = 'local';
                 if (selectedModel.startsWith('gpt')) provider = 'openai';
@@ -869,8 +1561,12 @@
                             if (sentenceBuffer.trim().length > 0) speakText(sentenceBuffer);
 
                             statusText.innerText = localize("status_done");
-                            window.aiBackend.setOrbStatus('idle');
-                            startWakeWordDetection();
+                            setLocalOrbStatus('idle');
+                            if (!isAgentSpeaking && !(window.speechSynthesis && window.speechSynthesis.speaking) && !activeAudio) {
+                                setTimeout(() => {
+                                    if (!isAgentSpeaking && !isListening) startWakeWordDetection();
+                                }, 600);
+                            }
 
                             // Save to local history
                             const chats = JSON.parse(localStorage.getItem('nexus-chats')) || [{ id: Date.now(), title: 'Voice', messages: [] }];
@@ -878,13 +1574,23 @@
                             chats[0].messages.push({ text: fullResponse, isUser: false, timestamp: Date.now() });
                             localStorage.setItem('nexus-chats', JSON.stringify(chats));
 
-                            // Suggestions logic
+                            // Suggestions / Sources logic
                             const suggestionCard = document.getElementById('suggestion-card');
                             const mdLinks = [...fullResponse.matchAll(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g)];
-                            if (mdLinks.length > 0) {
-                                suggestionCard.innerHTML = `<span class="suggestion-label">Suggestions</span>`;
-                                mdLinks.forEach(l => suggestionCard.innerHTML += `<a href="#" onclick="require('electron').shell.openExternal('${l[2]}')">${l[1]}</a>`);
+                            const realLinks = mdLinks.filter(l => 
+                                !l[2].includes('siri.com') && 
+                                !l[2].includes('kruuboo.com') && 
+                                !l[1].toLowerCase().startsWith('what is') && 
+                                !l[1].toLowerCase().startsWith('can you') &&
+                                !l[1].toLowerCase().startsWith('how do') &&
+                                !l[1].toLowerCase().startsWith('who is')
+                            );
+                            if (realLinks.length > 0) {
+                                suggestionCard.innerHTML = `<span class="suggestion-label">Sources</span>`;
+                                realLinks.slice(0, 4).forEach(l => suggestionCard.innerHTML += `<a href="#" onclick="require('electron').shell.openExternal('${l[2]}')">${l[1]}</a>`);
                                 suggestionCard.style.display = 'flex';
+                            } else {
+                                suggestionCard.style.display = 'none';
                             }
 
                             setTimeout(() => { 
@@ -893,7 +1599,6 @@
                             }, 8000);
                         }
                     };
-                    // Remove any stale handler before adding a new one (prevents duplicate responses)
                     if (activeWSHandler) ws.removeEventListener('message', activeWSHandler);
                     activeWSHandler = handleWSMessage;
                     ws.addEventListener('message', handleWSMessage);
@@ -908,51 +1613,41 @@
             }
         }
 
+        // ══════════════════════════════════════════════════════════════════════
+        // TTS / Speech Output & Dynamic Lip-Sync
+        // ══════════════════════════════════════════════════════════════════════
         async function speakText(text) {
-            // 1. Use DOMParser to safely strip ALL HTML and entities (handles <br>, &lt;br&gt;, etc.)
             const doc = new DOMParser().parseFromString(text, 'text/html');
             let speechContent = doc.body.textContent || "";
-
-            // 2. Aggressive citation and source stripping
-            // Split at 'Sources:', 'Source:', 'Ref:', 'Link:', etc.
             speechContent = speechContent.split(/(?:Sources?|Refs?|Links?|Citations?)\s*[:\-]/i)[0];
-            
-            // 3. Broad URL and technical fragment removal
-            // Matches http/https, www., and domains like 'google.com' followed by paths
             speechContent = speechContent.replace(/(?:https?:\/\/|www\.)[^\s]+/gi, '');
             speechContent = speechContent.replace(/[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?/gi, (match) => {
-                // Only replace if it looks like a real technical link (e.g. contains / or is a known domain)
                 return (match.includes('/') || match.includes('google.com') || match.includes('bing.com')) ? '' : match;
             });
-            
-            // 4. Strip search parameters and HTML-like fragments
-            // Targets things like '?q=healthy+relationships' or '&hl=en'
             speechContent = speechContent.replace(/[?&][a-zA-Z0-9]+=[^ \s]+/g, ''); 
             speechContent = speechContent.replace(/&[a-z]+;/g, '');
             
-            // 5. Cleanup: Remove markdown symbols and strange punctuation combos
             let cleanText = speechContent
                 .replace(/[*#_`~\\<>]/g, ' ') 
                 .replace(/\s+/g, ' ') 
                 .trim()
                 .substring(0, 500);
             
-            // Final check: Does it contain any actual speech-worthy content?
             if (!cleanText || cleanText.length < 2) return;
 
-            // Stop wake word detection before speaking to prevent self-triggering from speakers
+            // Immediately mute/stop any active recording or wake word listening
+            if (isListening) stopRecording();
             if (wakeWordRecognizer) {
                 try { wakeWordRecognizer.stop(); } catch(e){}
                 wakeWordRecognizer = null;
             }
+            isAgentSpeaking = true;
 
-            const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
+            const settings = getAppSettings();
             const lang = settings.lang || "en-US";
 
-            // If Sinhala, use the backend TTS endpoint for better quality/support
             if (lang.includes('si')) {
                 try {
-                    isAgentSpeaking = true;
                     console.log("Using Backend TTS for Sinhala...");
                     const response = await fetch(`${window.aiBackend.baseUrl}/tts`, {
                         method: 'POST',
@@ -967,8 +1662,14 @@
                     const audio = new Audio(audioUrl);
                     activeAudio = audio;
                     
-                    audio.onplay = () => { isAgentSpeaking = true; window.aiBackend.setOrbStatus('speaking'); };
-                    audio.onended = () => { isAgentSpeaking = false; activeAudio = null; window.aiBackend.setOrbStatus('idle'); URL.revokeObjectURL(audioUrl); startWakeWordDetection(); };
+                    audio.onplay = () => { isAgentSpeaking = true; setLocalOrbStatus('speaking'); };
+                    audio.onended = () => { 
+                        isAgentSpeaking = false; 
+                        activeAudio = null; 
+                        setLocalOrbStatus('idle'); 
+                        URL.revokeObjectURL(audioUrl); 
+                        setTimeout(() => { if (!isAgentSpeaking && !isListening) startWakeWordDetection(); }, 600);
+                    };
                     audio.play();
                     return;
                 } catch (err) {
@@ -983,9 +1684,17 @@
             utterance.rate = 1.0;
             utterance.pitch = 1.1;
 
-            utterance.onstart = () => { isAgentSpeaking = true; window.aiBackend.setOrbStatus('speaking'); };
-            utterance.onend = () => { isAgentSpeaking = false; window.aiBackend.setOrbStatus('idle'); startWakeWordDetection(); };
-            utterance.onerror = () => { isAgentSpeaking = false; window.aiBackend.setOrbStatus('idle'); startWakeWordDetection(); };
+            utterance.onstart = () => { isAgentSpeaking = true; setLocalOrbStatus('speaking'); };
+            utterance.onend = () => { 
+                isAgentSpeaking = false; 
+                setLocalOrbStatus('idle'); 
+                setTimeout(() => { if (!isAgentSpeaking && !isListening) startWakeWordDetection(); }, 600);
+            };
+            utterance.onerror = () => { 
+                isAgentSpeaking = false; 
+                setLocalOrbStatus('idle'); 
+                setTimeout(() => { if (!isAgentSpeaking && !isListening) startWakeWordDetection(); }, 600);
+            };
 
             window.speechSynthesis.speak(utterance);
         }
@@ -1005,26 +1714,23 @@
                 window.speechSynthesis.cancel();
             }
             isAgentSpeaking = false;
-            window.aiBackend.setOrbStatus('idle');
+            setLocalOrbStatus('idle');
             statusText.innerText = localize("status_idle");
             startWakeWordDetection();
         }
 
+        // ══════════════════════════════════════════════════════════════════════
+        // Initialization
+        // ══════════════════════════════════════════════════════════════════════
         window.addEventListener('load', () => {
             loadLocales();
+            updateVisualMode();
             startWakeWordDetection();
             
             window.aiBackend.onVoiceTrigger(() => {
                 if (!isListening && !isAgentSpeaking) {
                     startRecording();
                 }
-            });
-
-            window.aiBackend.onSettingsUpdated(() => {
-                console.log("Settings updated, refreshing Wake Word status...");
-                wakeWordErrorCount = 0; // Reset error counts on settings save
-                if (wakeWordRecognizer) { try { try { wakeWordRecognizer.stop(); } catch(e){} } catch(e){} wakeWordRecognizer = null; }
-                startWakeWordDetection();
             });
         });
 

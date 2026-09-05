@@ -335,7 +335,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const settings = JSON.parse(localStorage.getItem('nexus-settings')) || {};
         const selectedModel = settings.model || 'llama-3';
         let provider = 'local';
-        if (selectedModel.startsWith('gpt')) provider = 'openai';
+        if (selectedModel === 'gemma-litert') provider = 'local';
+        else if (selectedModel.startsWith('gpt')) provider = 'openai';
         else if (selectedModel.startsWith('claude')) provider = 'anthropic';
         else if (selectedModel.startsWith('deepseek')) provider = 'deepseek';
         else if (selectedModel.startsWith('grok')) provider = 'xai';
@@ -384,9 +385,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     llm_provider: provider,
                     llm_model: selectedModel,
                     api_key: settings.apiKey || "",
-                    language: settings.lang || "en-US",
+                    language: settings.sttLang || settings.lang || "en-US",
                     feeling: settings.feeling || "siri",
-                    image: imagePayload
+                    image: imagePayload,
+                    privacy_mode: settings.privacyMode || false
                 }
             }));
 

@@ -1,4 +1,5 @@
 import os
+import re as _re
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -10,6 +11,65 @@ import json
 from tools.memory_manager import MemoryManager
 
 memory = MemoryManager()
+
+# ---------------------------------------------------------------------------
+# Privacy Utilities
+# ---------------------------------------------------------------------------
+
+# Cloud providers whose API calls will be subject to privacy filtering
+_CLOUD_PROVIDERS = {"openai", "anthropic", "deepseek", "xai", "gemini"}
+
+_PII_PATTERNS = [
+    # Email addresses
+    (_re.compile(r'[\w.+-]+@[\w-]+\.[\w.]+'), '[EMAIL]'),
+    # Phone numbers (international & local formats)
+    (_re.compile(r'\+?\d[\d\s().\-]{7,}\d'), '[PHONE]'),
+    # Explicit name introductions  ("my name is X", "I am X")
+    (_re.compile(r'(?i)\b(my name is|i am|i\'m)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)'), r'\1 [NAME]'),
+    # Family names  ("my wife is X", "my son X")
+    (_re.compile(r"(?i)\b(my|our)\s+(wife|husband|daughter|son|mom|mother|dad|father|brother|sister|friend)'?s?\s+(name is|is named|is)\s+([A-Z][a-z]+)"), r'\1 \2\'s \3 [NAME]'),
+    # Addresses / street numbers
+    (_re.compile(r'\b\d{1,5}\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|Court|Ct)\b'), '[ADDRESS]'),
+]
+
+def _scrub_pii(text: str) -> str:
+    """Apply PII redaction patterns to a string before sending to a cloud API."""
+    for pattern, replacement in _PII_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+def _scrub_messages(messages: list) -> list:
+    """Return a copy of the messages list with PII scrubbed from all content."""
+    scrubbed = []
+    for m in messages:
+        scrubbed.append({"role": m["role"], "content": _scrub_pii(m["content"])})
+    return scrubbed
+
+# ---------------------------------------------------------------------------
+# MEMORIZE tag cleanup
+# ---------------------------------------------------------------------------
+# Matches variants the local LLM may produce:
+#   [MEMORIZE: text]  [MEMORIZE: text  (no closing bracket)  MEMORIZE: text
+_MEMORIZE_RE = _re.compile(
+    r'\[?MEMORIZE:\s*[^\]\n]*\]?',
+    _re.IGNORECASE
+)
+
+def _clean_memorize_tags(text: str):
+    """
+    Strip all MEMORIZE tag variants from text.
+    Returns (cleaned_text, first_fact_found_or_None).
+    """
+    first_fact = None
+    match = _MEMORIZE_RE.search(text)
+    if match:
+        raw = match.group(0)
+        # Extract the fact portion (strip leading tag keyword & brackets)
+        fact_raw = _re.sub(r'^\[?MEMORIZE:\s*', '', raw, flags=_re.IGNORECASE).rstrip(']').strip()
+        if fact_raw:
+            first_fact = fact_raw
+    cleaned = _MEMORIZE_RE.sub('', text).strip()
+    return cleaned, first_fact
 
 # Plugin Registry
 from plugins.google_connectors.gmail_plugin import GmailPlugin
@@ -106,7 +166,8 @@ def handle_user_query(
     allow_web_search: bool = True,
     chat_id: str = "default",
     feeling: str = "professional",
-    image: str = None
+    image: str = None,
+    privacy_mode: bool = False
 ) -> tuple[str, str]:
     """
     Realistic LLM reasoning loop. Supporting Universal Web Search Plugin (Deep Researcher).
@@ -116,14 +177,19 @@ def handle_user_query(
     # Rule-based Memory Fallback
     extract_and_save_facts_rules(query)
     
-    # Retrieve persistent history
-    history = memory.get_history(chat_id, limit=6)
+    # Retrieve persistent history (suppressed in privacy mode for cloud providers)
+    is_cloud = provider.lower() in _CLOUD_PROVIDERS
+    if privacy_mode and is_cloud:
+        history = []  # Don't send history to cloud in privacy mode
+    else:
+        history = memory.get_history(chat_id, limit=6)
     
-    # Personal Memory Retrieval (Simple RAG)
-    relevant_facts = memory.get_relevant_facts(query)
+    # Personal Memory Retrieval (Simple RAG) — suppressed in privacy mode for cloud
     memory_context = ""
-    if relevant_facts:
-        memory_context = "\nPERSONAL CONTEXT (Memories):\n- " + "\n- ".join(relevant_facts)
+    if not (privacy_mode and is_cloud):
+        relevant_facts = memory.get_relevant_facts(query)
+        if relevant_facts:
+            memory_context = "\nPERSONAL CONTEXT (Memories):\n- " + "\n- ".join(relevant_facts)
     
     # Check for Voice Automations (Macros)
     autos = memory.get_automations()
@@ -179,11 +245,17 @@ def handle_user_query(
         "all been": "open",
         "up in": "open",
         "oh but": "open",
+        "oh what a what's up": "open whatsapp",
+        "what a what's up": "whatsapp",
+        "what a whatsapp": "whatsapp",
+        "open what's up": "open whatsapp",
+        "open whats app": "open whatsapp",
+        "whats app": "whatsapp",
+        "what's up": "whatsapp",
         "fire fox": "firefox",
         "clothes": "close",
         "unbowed set up": "whatsapp",
         "and about to setup": "whatsapp",
-        "what's up": "whatsapp",
         "linking park": "linkin park",
         "link in park": "linkin park",
         "inking park": "linkin park"
@@ -499,9 +571,9 @@ def handle_user_query(
             tool_result = f"I've remembered that in your {category} details: {target_val}"
             action = f"save_memory: {target_val}"
         elif action_intent == "iot_control":
-            from tools.iot_control import IoTManager
+            from tools.iot_connector_manager import IoTConnectorManager
             action_type = "on" if any(x in query_lower for x in ["on", "activate", "start"]) else "off"
-            tool_result = IoTManager.control_device(target_val, action_type)
+            tool_result = IoTConnectorManager().dispatch_command(target_val, action_type)
             action = f"iot_control: {target_val} ({action_type})"
         elif action_intent == "iot_discovery":
             from tools.iot_control import IoTManager
@@ -569,25 +641,25 @@ def handle_user_query(
     }
     current_persona = persona_traits.get(feeling, persona_traits["professional"])
     response_language = LOCALE_LANGUAGE_MAP.get(language, LOCALE_LANGUAGE_MAP.get(language.lower(), language))
-    needs_scripting = any(kw in query.lower() for kw in ["run", "execute", "install", "command", "script", "code", "python", "terminal", "shell", "calculate", "math", "program", "google", "search"])
-    scripting_rule = "LOCAL SCRIPTING RULE: If the user asks for a task requiring programming, scripting, math/calculations, or data/file processing, write a shell command or inline python code and prefix the output with `PROPOSED_COMMAND: <command>` (e.g. `PROPOSED_COMMAND: python3 -c \"...\"`) so the user can approve and run it locally. Keep commands safe and do not use blocked commands like sudo or rm. " if needs_scripting else ""
+    needs_scripting = any(kw in query.lower() for kw in ["run", "execute", "install", "command", "script", "code", "python", "terminal", "shell", "calculate", "math", "program", "google", "search", "move", "organize", "copy", "transfer", "photo", "photos", "picture", "pictures", "file", "files", "folder", "directory"])
+    scripting_rule = "LOCAL SCRIPTING RULE: If the user asks for a task requiring file organization, moving/copying files, programming, scripting, math/calculations, or data processing, write a safe cross-platform shell command or inline python one-liner (using standard libraries like pathlib/shutil) and prefix the output with `PROPOSED_COMMAND: <command>` (e.g. `PROPOSED_COMMAND: python3 -c \"...\"`) so the user can approve and run it with one click. Keep commands safe and do not use blocked commands like sudo or rm. " if needs_scripting else ""
+
+    sources_rule = (
+        "IMPORTANT: 'WEB_RESEARCH_RESULTS' are provided. Synthesize them into a factual answer. Provide relevant source links in Markdown format [Title](URL) at the end of your response.\n"
+        if tool_result else
+        "Do NOT invent or append fake website links, URLs, or markdown link lists unless web search results are provided.\n"
+    )
 
     system_prompt = (
-        f"Your name is {assistant_name}. You are {assistant_name}, a proactive and highly intelligent research and executive agent. "
+        f"Your name is {assistant_name}. You are {assistant_name}, a friendly, intelligent personal AI assistant. "
         f"{current_persona} Respond in {response_language}. "
-        "CONVERSATIONAL RULE: Avoid robotic filler like 'I am here to help' or 'How can I assist?'. Instead, engage deeply with the user's context. "
-        "If the user tells you something important to remember, respond normally but include [MEMORIZE: fact] at the end of your message. "
-        "If the user shares something personal or emotional, acknowledge it with intelligence and empathy, then ask a smart follow-up question to help or investigate further. "
-        "PROACTIVE RULE: Always look for an opportunity to propose a smart action (e.g. searching the web, setting a reminder, or summarizing a complex topic) if it adds value. "
-        f"{scripting_rule}"
-        f"IDENTITY RULE: Never deny your identity or say you are 'just an AI'. Embrace your persona as {assistant_name}. "
-        "IMPORTANT: If 'WEB_RESEARCH_RESULTS' are provided, synthesize them into a factual report. "
-        "AVOID reading out or mentioning full source URLs in your spoken-style summary. "
-        "Instead, provide any relevant source links EXACTLY in this Markdown format: [Title](URL) "
-        "at the VERY END of your response under a 'Sources' line. "
-        "If the topic is global, political, or sensitive, present multiple perspectives found in the data. "
-        "If the user's request is vague, ask clarifying questions to verify their exact intent before proceeding."
-        f"{memory_context}"
+        "Keep your response natural, helpful, concise, and direct. "
+        + ("If the user tells you something important to remember, respond normally and include [MEMORIZE: fact] at the end. "
+           if is_cloud else "")
+        + f"{scripting_rule}"
+        + f"IDENTITY RULE: Never deny your identity. Embrace your persona as {assistant_name}. "
+        + f"{sources_rule}"
+        + f"{memory_context}"
     )
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -596,6 +668,10 @@ def handle_user_query(
         safe_result = str(tool_result)[:1500]
         messages.append({"role": "system", "content": f"WEB_RESEARCH_RESULTS:\n{safe_result}"})
     messages.append({"role": "user", "content": query})
+
+    # Apply PII scrubbing for cloud providers when privacy mode is enabled
+    if privacy_mode and is_cloud:
+        messages = _scrub_messages(messages)
 
     try:
         env_api_key = os.getenv("OPENAI_API_KEY")
@@ -644,19 +720,16 @@ def handle_user_query(
             response_text = data["content"][0]["text"] if "content" in data else f"Anthropic Error: {data}"
         else:
             from agents.local_llm import LocalLLM
-            # Use LocalIntelligencePlugin to format prompt (pass query for sensitive topic detection)
-            prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query)
+            # Use LocalIntelligencePlugin to format prompt (pass query for sensitive topic detection and target model architecture)
+            prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query, model_name=model)
             raw_response = LocalLLM.generate_response(prompt_str, model_name=model)
             # Use LocalIntelligencePlugin to clean response
             response_text = LocalIntelligencePlugin.clean_local_response(raw_response)
 
         import re
-        if "[MEMORIZE:" in response_text:
-            match = re.search(r"\[MEMORIZE:\s*([^\]]*?)(?:\]|$)", response_text)
-            if match:
-                fact = match.group(1).strip()
-                memory.save_fact(fact, category="personal")
-            response_text = re.sub(r"\[MEMORIZE:.*?(?:\]|$)", "", response_text).strip()
+        response_text, memorize_fact = _clean_memorize_tags(response_text)
+        if memorize_fact:
+            memory.save_fact(memorize_fact, category="personal")
 
         memory.add_message(chat_id, "user", query)
         memory.add_message(chat_id, "assistant", response_text)
@@ -676,7 +749,8 @@ async def stream_user_query(
     allow_web_search: bool = True,
     chat_id: str = "default",
     feeling: str = "professional",
-    image: str = None
+    image: str = None,
+    privacy_mode: bool = False
 ):
     print(f"ASSISTANT: Starting stream query for '{query}' with provider {provider}")
     """
@@ -686,8 +760,12 @@ async def stream_user_query(
     # Rule-based Memory Fallback
     extract_and_save_facts_rules(query)
 
-    # Retrieve persistent history
-    history = memory.get_history(chat_id, limit=6)
+    # Retrieve persistent history (suppressed in privacy mode for cloud providers)
+    is_cloud = provider.lower() in _CLOUD_PROVIDERS
+    if privacy_mode and is_cloud:
+        history = []
+    else:
+        history = memory.get_history(chat_id, limit=6)
     
     # Check for Voice Automations (Macros)
     autos = memory.get_automations()
@@ -701,11 +779,12 @@ async def stream_user_query(
                 yield json.dumps({"token": f"Triggering automation '{auto['name']}'...", "action": f"automation_{auto['id']}"}) + "\n"
                 return
     
-    # Personal Memory Retrieval (Simple RAG)
-    relevant_facts = memory.get_relevant_facts(query)
+    # Personal Memory Retrieval (Simple RAG) — suppressed in privacy mode for cloud
     memory_context = ""
-    if relevant_facts:
-        memory_context = "\nPERSONAL CONTEXT (Memories):\n- " + "\n- ".join(relevant_facts)
+    if not (privacy_mode and is_cloud):
+        relevant_facts = memory.get_relevant_facts(query)
+        if relevant_facts:
+            memory_context = "\nPERSONAL CONTEXT (Memories):\n- " + "\n- ".join(relevant_facts)
 
     # State interception for pending platform clarifications (e.g. "Spotify" or "YouTube Music")
     if pending_platform_queries.get(chat_id):
@@ -874,12 +953,9 @@ async def stream_user_query(
             except Exception as e:
                 response_text = f"Vision Error: {e}"
 
-        if "[MEMORIZE:" in response_text:
-            match = re.search(r"\[MEMORIZE:\s*([^\]]*?)(?:\]|$)", response_text)
-            if match:
-                fact = match.group(1).strip()
-                memory.save_fact(fact, category="personal")
-            response_text = re.sub(r"\[MEMORIZE:.*?(?:\]|$)", "", response_text).strip()
+        response_text, memorize_fact = _clean_memorize_tags(response_text)
+        if memorize_fact:
+            memory.save_fact(memorize_fact, category="personal")
 
         memory.add_message(chat_id, "user", f"[Sent an Image] {query}")
         memory.add_message(chat_id, "assistant", response_text)
@@ -1135,24 +1211,25 @@ async def stream_user_query(
     current_persona = persona_traits.get(feeling, persona_traits["professional"])
     response_language = LOCALE_LANGUAGE_MAP.get(language, LOCALE_LANGUAGE_MAP.get(language.lower(), language))
 
-    needs_scripting = any(kw in query.lower() for kw in ["run", "execute", "install", "command", "script", "code", "python", "terminal", "shell", "calculate", "math", "program", "google", "search"])
-    scripting_rule = "LOCAL SCRIPTING RULE: If the user asks for a task requiring programming, scripting, math/calculations, or data/file processing, write a shell command or inline python code and prefix the output with `PROPOSED_COMMAND: <command>` (e.g. `PROPOSED_COMMAND: python3 -c \"...\"`) so the user can approve and run it locally. Keep commands safe and do not use blocked commands like sudo or rm. " if needs_scripting else ""
+    needs_scripting = any(kw in query.lower() for kw in ["run", "execute", "install", "command", "script", "code", "python", "terminal", "shell", "calculate", "math", "program", "google", "search", "move", "organize", "copy", "transfer", "photo", "photos", "picture", "pictures", "file", "files", "folder", "directory"])
+    scripting_rule = "LOCAL SCRIPTING RULE: If the user asks for a task requiring file organization, moving/copying files, programming, scripting, math/calculations, or data processing, write a safe cross-platform shell command or inline python one-liner (using standard libraries like pathlib/shutil) and prefix the output with `PROPOSED_COMMAND: <command>` (e.g. `PROPOSED_COMMAND: python3 -c \"...\"`) so the user can approve and run it with one click. Keep commands safe and do not use blocked commands like sudo or rm. " if needs_scripting else ""
+
+    sources_rule = (
+        "IMPORTANT: 'WEB_RESEARCH_RESULTS' are provided. Synthesize them into a factual answer. Provide relevant source links in Markdown format [Title](URL) at the end of your response.\n"
+        if tool_result else
+        "Do NOT invent or append fake website links, URLs, or markdown link lists unless web search results are provided.\n"
+    )
 
     system_prompt = (
-        f"Your name is {assistant_name}. You are {assistant_name}, a proactive and highly intelligent research and executive agent. "
+        f"Your name is {assistant_name}. You are {assistant_name}, a friendly, intelligent personal AI assistant. "
         f"{current_persona} Respond in {response_language}. "
-        "CONVERSATIONAL RULE: Avoid robotic filler like 'I am here to help'. Instead, engage deeply with the user's context. "
-        "If the user tells you something important to remember, respond normally but include [MEMORIZE: fact] at the end of your message. "
-        "If the user shares something personal or emotional, acknowledge it with intelligence and empathy, then ask a smart follow-up question to help or investigate further. "
-        "PROACTIVE RULE: Always look for an opportunity to propose a smart action (e.g. searching the web, setting a reminder, or summarizing a complex topic) if it adds value. "
-        f"{scripting_rule}"
-        f"IDENTITY RULE: Never deny your identity or say you are 'just an AI'. Embrace your persona as {assistant_name}. "
-        "IMPORTANT: If 'WEB_RESEARCH_RESULTS' are provided, you MUST synthesize them into a factual answer. "
-        "AVOID reading out full source URLs; instead, provide them ONLY at the end of your response using Markdown format: [Title](URL). "
-        "Do not claim ideological constraints; focus on summarizing the data provided. "
-        "If the topic is controversial, present multiple viewpoints objectively. "
-        "If the user's request is vague, ask clarifying questions to verify their exact intent."
-        f"{memory_context}"
+        "Keep your response natural, helpful, concise, and direct. "
+        + ("If the user tells you something important to remember, respond normally and include [MEMORIZE: fact] at the end. "
+           if is_cloud else "")
+        + f"{scripting_rule}"
+        + f"IDENTITY RULE: Never deny your identity. Embrace your persona as {assistant_name}. "
+        + f"{sources_rule}"
+        + f"{memory_context}"
     )
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -1161,6 +1238,10 @@ async def stream_user_query(
         safe_result = str(tool_result)[:1500]
         messages.append({"role": "system", "content": f"WEB_RESEARCH_RESULTS:\n{safe_result}"})
     messages.append({"role": "user", "content": query})
+
+    # Apply PII scrubbing for cloud providers when privacy mode is enabled
+    if privacy_mode and is_cloud:
+        messages = _scrub_messages(messages)
 
     full_response = ""
     try:
@@ -1204,15 +1285,15 @@ async def stream_user_query(
             yield json.dumps({"token": full_response, "action": action}) + "\n"
         else:
             from agents.local_llm import LocalLLM
-            # Use LocalIntelligencePlugin for prompt tagging (pass query for sensitive topic detection)
-            prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query)
+            # Use LocalIntelligencePlugin for prompt formatting matching target architecture
+            prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query, model_name=model)
             
-            stop_markers = ["<|end|>", "<|user|>", "<|assistant|>", "User:", "Assistant:"]
+            stop_markers = LocalIntelligencePlugin.STOP_MARKERS
             buffer = ""
             for token in LocalLLM.generate_stream(prompt_str, model_name=model):
                 buffer += token
                 
-                # Check for full stop marker
+                # Check for full stop marker or note prefix
                 if any(marker in buffer for marker in stop_markers):
                     break
                     
@@ -1242,13 +1323,13 @@ async def stream_user_query(
                     full_response += safe_tail
                     yield json.dumps({"token": safe_tail, "action": action}) + "\n"
 
+            # Post-clean full_response to eliminate any leaked meta commentary
+            full_response = LocalIntelligencePlugin.clean_local_response(full_response)
+
         import re
-        if "[MEMORIZE:" in full_response:
-            match = re.search(r"\[MEMORIZE:\s*([^\]]*?)(?:\]|$)", full_response)
-            if match:
-                fact = match.group(1).strip()
-                memory.save_fact(fact, category="personal")
-            full_response = re.sub(r"\[MEMORIZE:.*?(?:\]|$)", "", full_response).strip()
+        full_response, memorize_fact = _clean_memorize_tags(full_response)
+        if memorize_fact:
+            memory.save_fact(memorize_fact, category="personal")
 
         memory.add_message(chat_id, "user", query)
         memory.add_message(chat_id, "assistant", full_response)

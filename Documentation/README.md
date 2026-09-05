@@ -4,13 +4,15 @@ A modular AI assistant with a Python backend and dual frontends (Electron for De
 
 ## Project Structure
 - `python_backend/`: FastAPI server handling STT, LLM reasoning, and tool execution.
-- `electron_app/`: Premium glassmorphic desktop interface.
-- `flutter_app/`: Cross-platform mobile/desktop interface.
+- `electron_app/`: Premium glassmorphic desktop interface with Siri Orb & 3D VRM Avatar.
+- `flutter_mobile/`: Cross-platform mobile interface with 3D VRM WebGL engine & Floating System Overlay.
 
 ## 📄 Project Documents
 | Document | Description |
 |---|---|
 | [README.md](./README.md) | Setup and feature overview (this file) |
+| [flutter_app_README.md](./flutter_app_README.md) | 📱 Flutter mobile app guide (3D VRM & Floating Overlay) |
+| [BUILD_APK.md](./BUILD_APK.md) | 📦 Android APK build instructions (Chaquopy + foreground service) |
 | [ai_assistant_plan.md](./ai_assistant_plan.md) | Full architecture and implementation plan |
 | [MR_HEADSET_ROADMAP.md](./MR_HEADSET_ROADMAP.md) | 🥽 Mixed Reality headset integration roadmap |
 
@@ -58,16 +60,16 @@ npm start
 ```
 *Note: Ensure the Python backend is running before starting the Electron app.*
 
-### 3. Flutter App Setup (Mobile/Desktop)
-Optional frontend for mobile.
+### 3. Flutter App Setup (Mobile)
+Cross-platform mobile application with 3D VRM rendering and floating overlay.
 
 ```bash
-cd flutter_app
+cd flutter_mobile
 
 # 1. Get dependencies
 flutter pub get
 
-# 2. Run the app
+# 2. Run the app on Android device / emulator
 flutter run
 ```
 
@@ -90,6 +92,8 @@ flutter run
 ---
 
 ## 🛠 Features
+- **3D VRM Avatar Engine:** Hardware-accelerated WebGL Three.js + `@pixiv/three-vrm` character engine with natural breathing, touch gaze tracking, auto-blinking, facial expressions, and real-time speech lip-sync across Desktop and Mobile.
+- **Floating System Overlay (`flutter_overlay_window`):** Android floating assistant head accessible over any application for quick voice queries.
 - **Voice Intelligence:** Integrated Vosk (Local) and Whisper (Cloud) STT. Includes **ElevenLabs Voice Cloning** dynamically registering custom user voice recordings for premium TTS.
 - **Multimodal Vision:** **Webcam/Camera Integration** capturing and analyzing visual inputs locally using **Ollama** (e.g. LLaVA or Llama 3.2 Vision) or cloud services (Gemini 1.5 Flash, OpenAI GPT-4o, Anthropic Claude 3.5 Sonnet) with keyless Pollinations.ai free fallback.
 - **Deep Research:** Autonomous web searching via Trafilatura and DuckDuckGo.

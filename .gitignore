@@ -10,7 +10,9 @@ Thumbs.db
 
 # Python
 python_backend/venv/
+python_backend/venv_litert/
 python_backend/__pycache__/
+**/__pycache__/
 python_backend/*.pyc
 python_backend/vosk-model-*/
 python_backend/voices/
@@ -22,6 +24,8 @@ electron_app/build/
 electron_app/dist/
 
 # Flutter
+flutter_mobile/.dart_tool/
+flutter_mobile/build/
 flutter_app/.dart_tool/
 flutter_app/.flutter-plugins
 flutter_app/.flutter-plugins-dependencies
@@ -44,6 +48,7 @@ flutter_app/pubspec.lock
 
 # Local databases and runtime configs
 *.db
+.sync_config.json
 python_backend/.sync_config.json
 
 # PyInstaller build artifacts & Electron copied resources

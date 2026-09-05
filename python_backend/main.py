@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header, Request, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header, Request, Depends, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from agents.assistant import handle_user_query, stream_user_query, _gmail_plugin, _calendar_plugin, memory
@@ -76,7 +76,11 @@ class ConnectionManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        try:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+        except ValueError:
+            pass
 
     async def broadcast(self, message: dict):
         for connection in self.active_connections:
@@ -125,7 +129,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                         allow_web_search=query_data.get("allow_web_search", True),
                         feeling=query_data.get("feeling", "professional"),
                         chat_id=query_data.get("chat_id", "default"),
-                        image=query_data.get("image", None)
+                        image=query_data.get("image", None),
+                        privacy_mode=query_data.get("privacy_mode", False)
                     ):
                         try:
                             # Extract token for broadcasting later
@@ -162,6 +167,36 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     pass
+
+# ── LiteRT-LM Model Management ────────────────────────────────────────────
+
+@app.get("/litert/status")
+async def litert_status():
+    """Check LiteRT-LM engine status and model availability."""
+    from agents.local_llm import LocalLLM
+    from agents.litert_downloader import model_exists, get_model_path
+    import os
+    info = LocalLLM.get_engine_info()
+    model_path = get_model_path()
+    model_size = os.path.getsize(model_path) if os.path.exists(model_path) else 0
+    return {
+        "engine": info["engine"],
+        "litert_model_downloaded": model_exists(),
+        "litert_model_path": model_path,
+        "litert_model_size_mb": round(model_size / (1024 * 1024), 1),
+        "litert_venv_available": info["litert_venv_available"],
+        "gguf_available": info["gguf_available"],
+    }
+
+@app.post("/litert/download")
+async def litert_download(background_tasks: BackgroundTasks):
+    """Start downloading the LiteRT-LM Gemma 4 E2B model in the background."""
+    from agents.litert_downloader import model_exists, download_model
+    if model_exists():
+        return {"status": "already_downloaded", "message": "Gemma 4 E2B model is already downloaded."}
+    
+    background_tasks.add_task(download_model)
+    return {"status": "downloading", "message": "Gemma 4 E2B model download started in background."}
 
 # ── Chat History Endpoints ─────────────────────────────────────────────────
 
@@ -215,6 +250,7 @@ class QueryRequest(BaseModel):
     allow_web_search: bool = True
     feeling: str = "professional"
     image: str = None
+    privacy_mode: bool = False
 
 class QueryResponse(BaseModel):
     response: str
@@ -268,7 +304,8 @@ async def process_query(request: QueryRequest):
                 api_key=request.api_key,
                 allow_web_search=request.allow_web_search,
                 feeling=request.feeling,
-                image=request.image
+                image=request.image,
+                privacy_mode=request.privacy_mode
             )
         )
         # Broadcast to other devices
@@ -315,7 +352,8 @@ async def process_query_stream(request: QueryRequest):
                 api_key=request.api_key,
                 allow_web_search=request.allow_web_search,
                 feeling=request.feeling,
-                image=request.image
+                image=request.image,
+                privacy_mode=request.privacy_mode
             ):
                 # Try to extract content from chunk if it's JSON
                 try:
@@ -462,6 +500,14 @@ async def activate_iot_connector(request: dict):
     vendor_id = request.get("vendor_id")
     config_data = request.get("config", {})
     return iot_manager.activate_connector(vendor_id, config_data)
+
+@app.post("/iot/dispatch", dependencies=[Depends(verify_sync_token)])
+async def dispatch_iot_command(request: dict):
+    device_name = request.get("device_name", "")
+    action = request.get("action", "")
+    value = request.get("value")
+    result = iot_manager.dispatch_command(device_name, action, value)
+    return {"status": "success", "result": result}
 
 # --- General Settings Endpoints ---
 @app.get("/settings/workspace", dependencies=[Depends(verify_sync_token)])
@@ -626,6 +672,51 @@ async def get_pet(state: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/upload_vrm")
+async def upload_vrm(file: UploadFile = File(...)):
+    try:
+        os.makedirs("assets", exist_ok=True)
+        file_path = os.path.join("assets", "custom_avatar.vrm")
+        with open(file_path, "wb") as buffer:
+            import shutil
+            shutil.copyfileobj(file.file, buffer)
+        return {"success": True, "path": "/avatar_vrm"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/vrm_info")
+async def get_vrm_info():
+    try:
+        file_path = os.path.join("assets", "custom_avatar.vrm")
+        has_custom = os.path.exists(file_path)
+        return {"has_custom": has_custom, "size": os.path.getsize(file_path) if has_custom else 0}
+    except Exception as e:
+        return {"has_custom": False, "error": str(e)}
+
+@app.api_route("/avatar_vrm", methods=["GET", "HEAD"])
+async def get_avatar_vrm():
+    try:
+        file_path = os.path.join("assets", "custom_avatar.vrm")
+        if os.path.exists(file_path):
+            from fastapi.responses import FileResponse
+            return FileResponse(file_path, media_type="model/gltf-binary")
+        raise HTTPException(status_code=404, detail="Custom VRM avatar not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/avatar_vrm")
+async def delete_avatar_vrm():
+    try:
+        file_path = os.path.join("assets", "custom_avatar.vrm")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            return {"success": True, "message": "Custom VRM removed"}
+        return {"success": True, "message": "No custom VRM found"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/tts", dependencies=[Depends(verify_sync_token)])
 async def process_tts(request: dict):
     try:
@@ -639,8 +730,9 @@ async def process_tts(request: dict):
         voice_path = os.path.join("voices", "user_voice.wav")
         elevenlabs_key = request.get("elevenKey") or os.getenv("ELEVEN_API_KEY")
 
-        # 1. Cloud Cloning (Highest Quality, requires key)
-        if os.path.exists(voice_path) and elevenlabs_key:
+        # 1. Cloud Cloning (Highest Quality, requires key) — skip for Sinhala (no si support in ElevenLabs)
+        is_sinhala = "si" in language.lower()
+        if os.path.exists(voice_path) and elevenlabs_key and not is_sinhala:
             try:
                 print(f"Using ElevenLabs Voice Cloning for: {language}")
                 
@@ -681,8 +773,8 @@ async def process_tts(request: dict):
             except Exception as e:
                 print(f"ElevenLabs failed: {e}. Falling back...")
 
-        # 2. Local Voice Cloning (Private, Offline, requires voice sample)
-        if os.path.exists(voice_path):
+        # 2. Local Voice Cloning (Private, Offline) — skip for Sinhala (XTTS v2 has no si model)
+        if os.path.exists(voice_path) and not is_sinhala:
             try:
                 if not hasattr(app, "tts_model"):
                     print("Loading Local Voice Cloning Model (Coqui XTTS v2)...")
@@ -694,8 +786,6 @@ async def process_tts(request: dict):
                 
                 print(f"Using Local Clone for: {language}")
                 output_path = os.path.join("voices", "output.wav")
-                xtts_lang = "en"
-                if "si" in language.lower(): xtts_lang = "en" 
                 
                 import asyncio
                 loop = asyncio.get_event_loop()
@@ -704,7 +794,7 @@ async def process_tts(request: dict):
                     lambda: app.tts_model.tts_to_file(
                         text=text,
                         speaker_wav=voice_path,
-                        language=xtts_lang,
+                        language="en",
                         file_path=output_path
                     )
                 )
@@ -712,14 +802,47 @@ async def process_tts(request: dict):
             except Exception as e:
                 print(f"Local XTTS failed: {e}. Falling back...")
 
-        # 3. Standard Multilingual TTS (Free, Reliable)
-        tts_lang = "si" if "si" in language.lower() else "en"
+        # 3a. Sinhala: Google Cloud TTS (best quality for si) if GOOGLE_API_KEY is set
+        if is_sinhala:
+            google_api_key = os.getenv("GOOGLE_API_KEY")
+            if google_api_key:
+                try:
+                    import requests as _req
+                    print("Using Google Cloud TTS for Sinhala...")
+                    url = f"https://texttospeech.googleapis.com/v1/text:synthesize?key={google_api_key}"
+                    payload = {
+                        "input": {"text": text},
+                        "voice": {
+                            "languageCode": "si-LK",
+                            "name": "si-LK-Standard-A",
+                            "ssmlGender": "FEMALE"
+                        },
+                        "audioConfig": {"audioEncoding": "MP3"}
+                    }
+                    resp = _req.post(url, json=payload, timeout=15)
+                    if resp.status_code == 200:
+                        import base64
+                        audio_content = base64.b64decode(resp.json()["audioContent"])
+                        return StreamingResponse(io.BytesIO(audio_content), media_type="audio/mpeg")
+                    else:
+                        print(f"Google Cloud TTS failed ({resp.status_code}), falling back to gTTS...")
+                except Exception as e:
+                    print(f"Google Cloud TTS error: {e}. Falling back to gTTS...")
+
+        # 3b. Standard Multilingual TTS via gTTS (free, supports Sinhala)
+        tts_lang = "si" if is_sinhala else "en"
+        print(f"Using gTTS for language: {tts_lang}")
+
+        # Validate text is not empty after any potential unicode stripping
+        clean_text = text.strip()
+        if not clean_text:
+            raise HTTPException(status_code=400, detail="Text is empty after sanitisation")
         
         from gtts import gTTS
         import tempfile
         
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-            tts = gTTS(text=text, lang=tts_lang)
+            tts = gTTS(text=clean_text, lang=tts_lang, slow=False)
             tts.save(tmp.name)
             tmp_path = tmp.name
         

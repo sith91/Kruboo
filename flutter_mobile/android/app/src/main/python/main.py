@@ -33,7 +33,11 @@ class ConnectionManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        try:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+        except ValueError:
+            pass
 
     async def broadcast(self, message: dict):
         for connection in self.active_connections:
@@ -302,11 +306,23 @@ iot_manager = IoTConnectorManager()
 async def get_iot_connectors():
     return {"connectors": iot_manager.get_available_connectors()}
 
+@app.get("/iot/active", dependencies=[Depends(verify_sync_token)])
+async def get_active_iot_connectors():
+    return {"active": iot_manager.get_active_connectors()}
+
 @app.post("/iot/activate", dependencies=[Depends(verify_sync_token)])
 async def activate_iot_connector(request: dict):
     vendor_id = request.get("vendor_id")
     config_data = request.get("config", {})
     return iot_manager.activate_connector(vendor_id, config_data)
+
+@app.post("/iot/dispatch", dependencies=[Depends(verify_sync_token)])
+async def dispatch_iot_command(request: dict):
+    device_name = request.get("device_name", "")
+    action = request.get("action", "")
+    value = request.get("value")
+    result = iot_manager.dispatch_command(device_name, action, value)
+    return {"status": "success", "result": result}
 
 # --- Security Endpoints ---
 @app.post("/security/set_passcode")

@@ -53,6 +53,16 @@ class PersonaService {
     await _savePersonas(personas);
   }
 
+  static const _activeKey = 'active_persona_id';
+
+  Future<String?> getActivePersonaId() async {
+    return await _secureStorage.read(key: _activeKey);
+  }
+
+  Future<void> setActivePersona(String id) async {
+    await _secureStorage.write(key: _activeKey, value: id);
+  }
+
   // Helper to copy local files to app documents directory; URLs are left unchanged
   Future<String?> _storeFileIfLocal(String? path) async {
     if (path == null) return null;

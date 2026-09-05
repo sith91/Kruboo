@@ -28,14 +28,22 @@
       {
         "from": "resources/kruboo_backend",
         "to": "kruboo_backend",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.icns",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Kruboo needs microphone access to listen for your voice commands.",
@@ -52,14 +60,30 @@
       "icon": "assets/icon.icns",
       "iconSize": 100,
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ],
-      "window": { "width": 540, "height": 380 }
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/icon.png"
     },
@@ -71,7 +95,11 @@
       "shortcutName": "Kruboo"
     },
     "linux": {
-      "target": ["AppImage", "deb", "rpm"],
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
       "category": "Utility",
       "icon": "assets/icon.png"
     },
@@ -84,11 +112,12 @@
     ]
   },
   "dependencies": {
-    "jimp": "^0.22.12",
+    "@pixiv/three-vrm": "^3.5.5",
     "electron-store": "^8.1.0",
-    "keytar": "^7.9.0",
+    "electron-updater": "^6.2.0",
     "howler": "^2.2.4",
-    "electron-updater": "^6.2.0"
+    "jimp": "^0.22.12",
+    "keytar": "^7.9.0",
+    "three": "^0.185.1"
   }
 }
-

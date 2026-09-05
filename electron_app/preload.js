@@ -10,18 +10,9 @@ contextBridge.exposeInMainWorld('aiBackend', {
   wsUrl: wsUrl,
 
   // Settings API
-  getSettings: async () => {
-    const res = await fetch(`${baseUrl}/api/settings`);
-    return await res.json();
-  },
-  saveSettings: async (settings) => {
-    const res = await fetch(`${baseUrl}/api/settings`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
-    });
-    return await res.json();
-  },
+  getSettingsSync: () => ipcRenderer.sendSync('get-settings-sync'),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
 
   ask: (requestData) => ipcRenderer.invoke('ask-ai', requestData),
   askStream: (requestData) => ipcRenderer.send('ask-ai-stream', requestData),
@@ -41,9 +32,17 @@ contextBridge.exposeInMainWorld('aiBackend', {
   showOrb: () => ipcRenderer.send('show-orb-window'),
   setOrbStatus: (status) => ipcRenderer.send('set-orb-status', status),
   onVoiceTrigger: (callback) => ipcRenderer.on('trigger-voice-listen', () => callback()),
-  notifySettingsUpdated: () => ipcRenderer.send('settings-updated'),
-  onSettingsUpdated: (callback) => ipcRenderer.on('refresh-settings', () => callback()),
+  notifySettingsUpdated: (data) => ipcRenderer.send('settings-updated', data),
+  onSettingsUpdated: (callback) => {
+    ipcRenderer.removeAllListeners('refresh-settings');
+    ipcRenderer.on('refresh-settings', (event, data) => callback(data));
+  },
   triggerAction: (action) => ipcRenderer.send('trigger-action', action),
+  resizeOrbWindow: (width, height) => ipcRenderer.send('resize-orb-window', { width, height }),
+  onWindowResized: (callback) => {
+    ipcRenderer.removeAllListeners('window-resized');
+    ipcRenderer.on('window-resized', () => callback());
+  },
   onTriggerAction: (callback) => {
     ipcRenderer.removeAllListeners('execute-action');
     ipcRenderer.on('execute-action', (event, action) => callback(action));

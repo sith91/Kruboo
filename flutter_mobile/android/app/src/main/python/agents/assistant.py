@@ -184,11 +184,17 @@ def handle_user_query(
         "all been": "open",
         "up in": "open",
         "oh but": "open",
+        "oh what a what's up": "open whatsapp",
+        "what a what's up": "whatsapp",
+        "what a whatsapp": "whatsapp",
+        "open what's up": "open whatsapp",
+        "open whats app": "open whatsapp",
+        "whats app": "whatsapp",
+        "what's up": "whatsapp",
         "fire fox": "firefox",
         "clothes": "close",
         "unbowed set up": "whatsapp",
         "and about to setup": "whatsapp",
-        "what's up": "whatsapp",
         "linking park": "linkin park",
         "link in park": "linkin park",
         "inking park": "linkin park"
@@ -351,9 +357,9 @@ def handle_user_query(
             tool_result = f"I've remembered that in your {category} details: {target_val}"
             action = f"save_memory: {target_val}"
         elif action_intent == "iot_control":
-            from tools.iot_control import IoTManager
+            from tools.iot_connector_manager import IoTConnectorManager
             action_type = "on" if any(x in query_lower for x in ["on", "activate", "start"]) else "off"
-            tool_result = IoTManager.control_device(target_val, action_type)
+            tool_result = IoTConnectorManager().dispatch_command(target_val, action_type)
             action = f"iot_control: {target_val} ({action_type})"
         elif action_intent == "iot_discovery":
             from tools.iot_control import IoTManager
@@ -495,8 +501,8 @@ def handle_user_query(
             response_text = data["content"][0]["text"] if "content" in data else f"Anthropic Error: {data}"
         else:
             from agents.local_llm import LocalLLM
-            # Use LocalIntelligencePlugin to format prompt (pass query for sensitive topic detection)
-            prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query)
+            # Use LocalIntelligencePlugin to format prompt (pass query for sensitive topic detection and target model architecture)
+            prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query, model_name=model)
             raw_response = LocalLLM.generate_response(prompt_str, model_name=model)
             # Use LocalIntelligencePlugin to clean response
             response_text = LocalIntelligencePlugin.clean_local_response(raw_response)
@@ -891,15 +897,15 @@ async def stream_user_query(
             yield json.dumps({"token": full_response, "action": action}) + "\n"
         else:
             from agents.local_llm import LocalLLM
-            # Use LocalIntelligencePlugin for prompt tagging (pass query for sensitive topic detection)
-            prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query)
+            # Use LocalIntelligencePlugin for prompt formatting matching target architecture
+            prompt_str = LocalIntelligencePlugin.format_phi3_prompt(system_prompt, messages, query, model_name=model)
             
-            stop_markers = ["<|end|>", "<|user|>", "<|assistant|>", "User:", "Assistant:"]
+            stop_markers = LocalIntelligencePlugin.STOP_MARKERS
             buffer = ""
             for token in LocalLLM.generate_stream(prompt_str, model_name=model):
                 buffer += token
                 
-                # Check for full stop marker
+                # Check for full stop marker or note prefix
                 if any(marker in buffer for marker in stop_markers):
                     break
                     
@@ -928,6 +934,9 @@ async def stream_user_query(
                 if safe_tail:
                     full_response += safe_tail
                     yield json.dumps({"token": safe_tail, "action": action}) + "\n"
+
+            # Post-clean full_response to eliminate any leaked meta commentary
+            full_response = LocalIntelligencePlugin.clean_local_response(full_response)
 
         import re
         if "[MEMORIZE:" in full_response:

@@ -26,28 +26,28 @@ def transcribe_audio_bytes(audio_bytes: bytes, language: str = "en-US", api_key:
     3. Fallback to Vosk (English).
     """
     
-    # 1. Premium Fallback: OpenAI Whisper (High Quality & Translation)
+    # 1. Premium Fallback: OpenAI Whisper (High Quality & Multilingual)
     if api_key:
         try:
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
             
-            # Save bytes to temp file for OpenAI API
             import tempfile
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp.write(audio_bytes)
                 tmp_path = tmp.name
             
             try:
-                # If specifically requested for Sinhala, use translation to English for better command stability
                 if "si" in language.lower():
-                    print("Using Whisper TRANSLATE for Sinhala...")
+                    # Transcribe natively in Sinhala — preserve original text for SinLingua processing
+                    print("Using Whisper TRANSCRIBE (native Sinhala)...")
                     with open(tmp_path, "rb") as audio_file:
-                        translation = client.audio.translations.create(
+                        transcription = client.audio.transcriptions.create(
                             model="whisper-1",
-                            file=audio_file
+                            file=audio_file,
+                            language="si"   # ISO 639-1 code for Sinhala
                         )
-                        text = translation.text
+                        text = transcription.text
                 else:
                     print(f"Using Whisper TRANSCRIBE for {language}...")
                     with open(tmp_path, "rb") as audio_file:

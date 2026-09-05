@@ -47,7 +47,10 @@ class MainActivity : FlutterActivity() {
                 "startBackend" -> {
                     Log.i(TAG, "Flutter requested: startBackend")
                     startBackendService()
-                    result.success("Backend service started")
+                    result.success(BackendService.backendPort)
+                }
+                "getBackendPort" -> {
+                    result.success(BackendService.backendPort)
                 }
                 "stopBackend" -> {
                     Log.i(TAG, "Flutter requested: stopBackend")

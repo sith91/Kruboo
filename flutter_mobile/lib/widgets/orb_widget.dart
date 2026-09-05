@@ -7,16 +7,16 @@ enum OrbState { idle, listening, thinking, speaking }
 
 class OrbWidget extends StatefulWidget {
   final OrbState state;
-  final ApiService apiService;
+  final ApiService? apiService;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
+  final VoidCallback? onLongPress;
 
   const OrbWidget({
     Key? key,
     required this.state,
-    required this.apiService,
+    this.apiService,
     required this.onTap,
-    required this.onLongPress,
+    this.onLongPress,
   }) : super(key: key);
 
   @override
@@ -117,16 +117,18 @@ class _OrbWidgetState extends State<OrbWidget> with TickerProviderStateMixin {
               double scale = 1.0 + (_pulseController.value * (isListening || isThinking ? 0.15 : 0.05));
               return Transform.scale(
                 scale: scale,
-                child: Image.network(
-                  '${widget.apiService.baseUrl}/pet/${widget.state.name}',
-                  width: 100,
-                  height: 100,
-                  fit: BoxFit.contain,
-                  gaplessPlayback: true,
-                  errorBuilder: (context, error, stackTrace) {
-                    return _buildClassicGlobe(isListening, isThinking);
-                  },
-                ),
+                child: widget.apiService != null
+                    ? Image.network(
+                        '${widget.apiService!.baseUrl}/pet/${widget.state.name}',
+                        width: 100,
+                        height: 100,
+                        fit: BoxFit.contain,
+                        gaplessPlayback: true,
+                        errorBuilder: (context, error, stackTrace) {
+                          return _buildClassicGlobe(isListening, isThinking);
+                        },
+                      )
+                    : _buildClassicGlobe(isListening, isThinking),
               );
             },
           ),

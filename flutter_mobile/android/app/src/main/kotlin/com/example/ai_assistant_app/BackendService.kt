@@ -60,6 +60,9 @@ class BackendService : Service() {
         var isRunning = false
 
         @Volatile
+        var backendPort = 8000
+
+        @Volatile
         var instance: BackendService? = null
 
         @Volatile
@@ -218,8 +221,19 @@ class BackendService : Service() {
                 val filesDir = this.filesDir.absolutePath
                 Log.i(TAG, "Starting FastAPI backend — data dir: $filesDir")
 
-                val result = runner.callAttr("start_server", filesDir).toString()
-                Log.i(TAG, "Backend launch result: $result")
+                val portVal = runner.callAttr("start_server", filesDir).toInt()
+                backendPort = portVal
+                isRunning = true
+                Log.i(TAG, "Backend launched dynamically on port: $backendPort")
+
+                // Update foreground notification with assigned dynamic port
+                val notification = buildNotification("AI backend active on 127.0.0.1:$backendPort")
+                val manager = getSystemService(NotificationManager::class.java)
+                manager.notify(NOTIFICATION_ID, notification)
+
+                // Persist assigned port to SharedPreferences for Flutter ApiService
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                prefs.edit().putString("flutter.api_base_url", "http://127.0.0.1:$backendPort").apply()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start Python backend: ${e.message}", e)
                 updateNotificationError("Failed to start backend: ${e.message}")
@@ -386,7 +400,7 @@ class BackendService : Service() {
         executor.submit {
             var connection: HttpURLConnection? = null
             try {
-                val url = URL("http://127.0.0.1:8000/query")
+                val url = URL("http://127.0.0.1:$backendPort/query")
                 connection = url.openConnection() as HttpURLConnection
                 connection.requestMethod = "POST"
                 connection.setRequestProperty("Content-Type", "application/json")
